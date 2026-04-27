@@ -25,3 +25,9 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - `pnpm --filter @workspace/api-server run dev` — run API server locally
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
+
+## Artifacts
+
+- **`artifacts/apexrx`** — ApexRx Pharmacy Console (React + Vite, Tailwind v3 + shadcn). Ported from a Lovable.dev import. Frontend-only — uses mock data via `src/lib/api.ts` (the original Lovable app shipped with no backend). Custom dark/light theme provider in `src/lib/theme.tsx`. Routing via `react-router-dom`.
+- **`artifacts/api-server`** — Express 5 API scaffold. Not currently used by `apexrx` but available for future expansion.
+- **`artifacts/mockup-sandbox`** — Canvas mockup sandbox.
