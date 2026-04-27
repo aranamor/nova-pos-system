@@ -134,6 +134,13 @@ export default function Inventory() {
           </div>
         </CardContent>
       </Card>
+
+      <BatchDetailsDialog
+        open={!!selected}
+        onOpenChange={v => !v && setSelected(null)}
+        product={selected}
+        batches={selected ? synthesizeBatches(selected) : []}
+      />
     </div>
   );
 }
