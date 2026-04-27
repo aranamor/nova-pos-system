@@ -98,9 +98,12 @@ export default function Inventory() {
                   const expired = p.expiry < todayMonth;
                   const soon = !expired && p.expiry <= monthsAhead(3);
                   return (
-                    <tr key={p.id} className="border-t border-border/60 hover:bg-muted/20">
+                    <tr key={p.id} onClick={() => setSelected(p)} className="cursor-pointer border-t border-border/60 hover:bg-muted/20">
                       <td className="px-4 py-3">
-                        <div className="font-medium">{p.name}</div>
+                        <div className="flex items-center gap-1.5 font-medium">
+                          {p.name}
+                          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                        </div>
                         <div className="font-mono text-xs text-muted-foreground">HSN {p.hsn} · {p.packaging}</div>
                       </td>
                       <td className="px-3 py-3 font-mono text-xs">{p.batch}</td>
@@ -116,7 +119,7 @@ export default function Inventory() {
                           : <Badge variant="secondary" className="font-mono">{p.expiry}</Badge>}
                       </td>
                       <td className="px-3 py-3 text-center font-mono text-xs">{p.cgst}+{p.sgst}%</td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-end gap-1">
                           <Button variant="ghost" size="icon" className="h-8 w-8"><Edit2 className="h-3.5 w-3.5" /></Button>
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
