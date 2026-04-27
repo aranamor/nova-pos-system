@@ -56,8 +56,8 @@ export default function Purchases() {
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard icon={Receipt} label="Total Purchases" value={String(stats.count)} />
-        <StatCard icon={CheckCircle2} label="Completed" value={String(stats.completed)} tone="success" />
-        <StatCard icon={FileClock} label="Drafts" value={String(stats.drafts)} tone="warning" />
+        <StatCard icon={CheckCircle2} label="Completed" value={String(stats.completed)} />
+        <StatCard icon={FileClock} label="Drafts" value={String(stats.drafts)} />
         <StatCard icon={Wallet} label="Total Spend" value={formatINR(stats.totalSpend)} />
       </div>
 
