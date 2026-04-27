@@ -1,61 +1,170 @@
-// Thin API client. Talks to your Express backend at VITE_API_BASE (default '/api').
-// In Lovable preview the backend isn't reachable, so each call falls back to
-// realistic mock data. Swap VITE_API_BASE to your server URL in production.
-
-import { mockData } from "./mock-data";
+// Thin API client for the ApexRx Express backend.
+// Uses session cookies. On 401, redirects to /login.
 
 const BASE = (import.meta.env.VITE_API_BASE as string) || "/api";
 
-async function request<T>(path: string, init?: RequestInit, fallback?: T): Promise<T> {
-  try {
-    const res = await fetch(`${BASE}${path}`, {
-      credentials: "include",
-      headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
-      ...init,
-    });
-    if (!res.ok) throw new Error(`${res.status}`);
-    return (await res.json()) as T;
-  } catch {
-    if (fallback !== undefined) return fallback;
-    throw new Error(`API ${path} unreachable`);
+export class ApiError extends Error {
+  status: number;
+  payload: unknown;
+  constructor(message: string, status: number, payload: unknown) {
+    super(message);
+    this.status = status;
+    this.payload = payload;
   }
 }
 
+let onUnauthorized: (() => void) | null = null;
+export function setUnauthorizedHandler(fn: () => void) {
+  onUnauthorized = fn;
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+    ...init,
+  });
+  let payload: unknown = null;
+  const ct = res.headers.get("content-type") ?? "";
+  if (ct.includes("application/json")) {
+    try {
+      payload = await res.json();
+    } catch {
+      payload = null;
+    }
+  } else {
+    try {
+      payload = await res.text();
+    } catch {
+      payload = null;
+    }
+  }
+  if (!res.ok) {
+    const isAuthEndpoint = path === "/login" || path === "/me" || path === "/logout";
+    if (res.status === 401 && !isAuthEndpoint && onUnauthorized) {
+      onUnauthorized();
+    }
+    const msg =
+      (typeof payload === "object" &&
+        payload &&
+        ((payload as Record<string, unknown>).error as string)) ||
+      (typeof payload === "object" &&
+        payload &&
+        ((payload as Record<string, unknown>).message as string)) ||
+      `Request failed (${res.status})`;
+    throw new ApiError(String(msg), res.status, payload);
+  }
+  return payload as T;
+}
+
 export const api = {
+  // Auth
+  me: () => request<{ loggedIn: boolean; username: string | null }>("/me"),
+  login: (username: string, password: string) =>
+    request<{ success: boolean; username?: string; message?: string }>("/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
+  logout: () => request<{ success: boolean }>("/logout", { method: "POST" }),
+
   // Dashboard
-  dashboardStats: () => request("/dashboard-stats", {}, mockData.dashboardStats),
+  dashboardStats: () => request<any>("/dashboard-stats"),
+
   // Products
-  products: () => request<any[]>("/products", {}, mockData.products),
-  product: (id: number | string) => request<any>(`/products/${id}`, {}, mockData.products[0]),
-  createProduct: (body: any) => request("/products", { method: "POST", body: JSON.stringify(body) }, { id: Date.now() }),
-  updateProduct: (id: any, body: any) => request(`/products/${id}`, { method: "PUT", body: JSON.stringify(body) }, { ok: true }),
-  deleteProduct: (id: any) => request(`/products/${id}`, { method: "DELETE" }, { ok: true }),
-  stockAdjust: (body: any) => request("/stock-adjustments", { method: "POST", body: JSON.stringify(body) }, { ok: true }),
+  products: () => request<any[]>("/products"),
+  product: (id: number | string) => request<any>(`/products/${id}`),
+  createProduct: (body: any) =>
+    request<{ id: number; message: string }>("/products", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateProduct: (id: any, body: any) =>
+    request<{ message: string }>(`/products/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteProduct: (id: any) =>
+    request<{ message: string }>(`/products/${id}`, { method: "DELETE" }),
+  stockAdjust: (body: any) =>
+    request<{ message: string }>("/stock-adjustments", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   // Customers
-  customers: () => request<any[]>("/customers", {}, mockData.customers),
-  customer: (id: any) => request(`/customers/${id}`, {}, mockData.customers[0]),
-  customerHistory: (id: any) => request<any[]>(`/customers/${id}/history`, {}, mockData.customerHistory),
-  createCustomer: (body: any) => request("/customers", { method: "POST", body: JSON.stringify(body) }, { id: Date.now() }),
-  updateCustomer: (id: any, body: any) => request(`/customers/${id}`, { method: "PUT", body: JSON.stringify(body) }, { ok: true }),
-  deleteCustomer: (id: any) => request(`/customers/${id}`, { method: "DELETE" }, { ok: true }),
+  customers: () => request<any[]>("/customers"),
+  customer: (id: any) => request<any>(`/customers/${id}`),
+  customerHistory: (id: any) => request<any[]>(`/customers/${id}/history`),
+  createCustomer: (body: any) =>
+    request<{ id: number; message: string }>("/customers", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateCustomer: (id: any, body: any) =>
+    request<{ message: string }>(`/customers/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteCustomer: (id: any) =>
+    request<{ message: string }>(`/customers/${id}`, { method: "DELETE" }),
+
   // Suppliers
-  suppliers: () => request<any[]>("/suppliers", {}, mockData.suppliers),
+  suppliers: () => request<any[]>("/suppliers"),
+  createSupplier: (body: any) =>
+    request<{ id: number; message: string }>("/suppliers", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateSupplier: (id: any, body: any) =>
+    request<{ message: string }>(`/suppliers/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteSupplier: (id: any) =>
+    request<{ message: string }>(`/suppliers/${id}`, { method: "DELETE" }),
+
   // Settings
-  settings: () => request<Record<string, string>>("/settings", {}, mockData.settings),
-  saveSettings: (body: any) => request("/settings", { method: "POST", body: JSON.stringify(body) }, { ok: true }),
+  settings: () => request<Record<string, string | number>>("/settings"),
+  saveSettings: (body: any) =>
+    request<{ message: string }>("/settings", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   // Bills
-  bills: () => request<any[]>("/bills", {}, mockData.bills),
-  heldBills: () => request<any[]>("/held-bills", {}, mockData.bills.filter(b => b.status === "Hold")),
-  bill: (id: any) => request(`/bills/${id}`, {}, mockData.bills[0]),
-  createBill: (body: any) => request("/bills", { method: "POST", body: JSON.stringify(body) }, { id: Date.now(), bill_number: `INV-${Date.now()}` }),
-  updateBill: (id: any, body: any) => request(`/bills/${id}`, { method: "PUT", body: JSON.stringify(body) }, { ok: true }),
-  deleteBill: (id: any) => request(`/bills/${id}`, { method: "DELETE" }, { ok: true }),
+  bills: () => request<any[]>("/bills"),
+  heldBills: () => request<any[]>("/held-bills"),
+  bill: (id: any) => request<any>(`/bills/${id}`),
+  createBill: (body: any) =>
+    request<{ id: number; bill_number: string; message: string }>("/bills", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateBill: (id: any, body: any) =>
+    request<{ message: string }>(`/bills/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteBill: (id: any) =>
+    request<{ message: string }>(`/bills/${id}`, { method: "DELETE" }),
+
   // Purchases
-  purchases: () => request<any[]>("/purchases", {}, mockData.purchases),
-  purchase: (id: any) => request(`/purchases/${id}`, {}, mockData.purchases[0]),
-  createPurchase: (body: any) => request("/purchases", { method: "POST", body: JSON.stringify(body) }, { id: Date.now() }),
-  updatePurchase: (id: any, body: any) => request(`/purchases/${id}`, { method: "PUT", body: JSON.stringify(body) }, { ok: true }),
+  purchases: () => request<any[]>("/purchases"),
+  purchase: (id: any) => request<any>(`/purchases/${id}`),
+  createPurchase: (body: any) =>
+    request<{ id: number; message: string }>("/purchases", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updatePurchase: (id: any, body: any) =>
+    request<{ message: string }>(`/purchases/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+
   // Reports
-  report: (type: string, from: string, to: string) =>
-    request<any[]>(`/reports?type=${type}&from=${from}&to=${to}`, {}, mockData.reportsByType(type)),
+  report: (type: string, fromDate: string, toDate: string) => {
+    const qs = new URLSearchParams({ type, fromDate, toDate }).toString();
+    return request<any[]>(`/reports?${qs}`);
+  },
 };

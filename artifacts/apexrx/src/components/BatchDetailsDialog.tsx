@@ -6,30 +6,33 @@ import { AlertTriangle, Package, CalendarClock } from "lucide-react";
 import { formatINR } from "@/lib/format";
 
 export type BatchRow = {
+  id?: number;
   batch: string;
-  quantity: number;
-  mrp: number;
-  sale_rate_inclusive: number;
-  expiry: string; // YYYY-MM
-  purchase_rate?: number;
+  quantity: number | string;
+  mrp: number | string;
+  sale_rate_inclusive: number | string;
+  expiry: string;
+  purchase_rate?: number | string;
 };
 
 type Props = {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   product: {
-    id: number | string;
-    name: string;
+    id?: number | string;
+    name?: string;
     hsn?: string;
     packaging?: string;
-    cgst?: number;
-    sgst?: number;
+    cgst?: number | string;
+    sgst?: number | string;
   } | null;
   batches: BatchRow[];
 };
 
 const monthsAhead = (n: number) => {
-  const d = new Date(); d.setMonth(d.getMonth() + n); return d.toISOString().slice(0, 7);
+  const d = new Date();
+  d.setMonth(d.getMonth() + n);
+  return d.toISOString().slice(0, 7);
 };
 
 export function BatchDetailsDialog({ open, onOpenChange, product, batches }: Props) {
@@ -37,19 +40,23 @@ export function BatchDetailsDialog({ open, onOpenChange, product, batches }: Pro
   const todayMonth = new Date().toISOString().slice(0, 7);
   const m3 = monthsAhead(3);
 
+  const numQty = (b: BatchRow) => Number(b.quantity ?? 0);
+
   const filtered = useMemo(() => {
-    return batches.filter(b => {
-      const expired = b.expiry < todayMonth;
-      const expiring = !expired && b.expiry <= m3;
+    return batches.filter((b) => {
+      const expired = String(b.expiry) < todayMonth;
+      const expiring = !expired && String(b.expiry) <= m3;
       if (filter === "expired") return expired;
       if (filter === "expiring") return expiring;
       return true;
     });
   }, [batches, filter, todayMonth, m3]);
 
-  const totalQty = batches.reduce((s, b) => s + b.quantity, 0);
-  const expiredQty = batches.filter(b => b.expiry < todayMonth).reduce((s, b) => s + b.quantity, 0);
-  const expiringQty = batches.filter(b => b.expiry >= todayMonth && b.expiry <= m3).reduce((s, b) => s + b.quantity, 0);
+  const totalQty = batches.reduce((s, b) => s + numQty(b), 0);
+  const expiredQty = batches.filter((b) => String(b.expiry) < todayMonth).reduce((s, b) => s + numQty(b), 0);
+  const expiringQty = batches
+    .filter((b) => String(b.expiry) >= todayMonth && String(b.expiry) <= m3)
+    .reduce((s, b) => s + numQty(b), 0);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -83,7 +90,7 @@ export function BatchDetailsDialog({ open, onOpenChange, product, batches }: Pro
           </div>
         </div>
 
-        <Tabs value={filter} onValueChange={v => setFilter(v as any)}>
+        <Tabs value={filter} onValueChange={(v) => setFilter(v as any)}>
           <TabsList className="bg-muted/40">
             <TabsTrigger value="all">All Batches</TabsTrigger>
             <TabsTrigger value="expiring">Expiring (≤3m)</TabsTrigger>
@@ -105,25 +112,33 @@ export function BatchDetailsDialog({ open, onOpenChange, product, batches }: Pro
             </thead>
             <tbody>
               {filtered.map((b, i) => {
-                const expired = b.expiry < todayMonth;
-                const soon = !expired && b.expiry <= m3;
+                const expired = String(b.expiry) < todayMonth;
+                const soon = !expired && String(b.expiry) <= m3;
                 return (
                   <tr key={`${b.batch}-${i}`} className="border-t border-border/60 hover:bg-muted/20">
                     <td className="px-3 py-2 font-mono text-xs">{b.batch}</td>
-                    <td className="px-3 py-2 text-right font-mono">{b.quantity}</td>
+                    <td className="px-3 py-2 text-right font-mono">{numQty(b)}</td>
                     <td className="px-3 py-2 text-right font-mono">{formatINR(b.mrp)}</td>
                     <td className="px-3 py-2 text-right font-mono">{formatINR(b.sale_rate_inclusive)}</td>
                     <td className="px-3 py-2 text-center font-mono text-xs">{b.expiry}</td>
                     <td className="px-3 py-2 text-center">
-                      {expired ? <Badge variant="destructive">Expired</Badge>
-                        : soon ? <Badge className="bg-warning text-warning-foreground hover:bg-warning">Expiring</Badge>
-                        : <Badge variant="secondary">OK</Badge>}
+                      {expired ? (
+                        <Badge variant="destructive">Expired</Badge>
+                      ) : soon ? (
+                        <Badge className="bg-warning text-warning-foreground hover:bg-warning">Expiring</Badge>
+                      ) : (
+                        <Badge variant="secondary">OK</Badge>
+                      )}
                     </td>
                   </tr>
                 );
               })}
               {!filtered.length && (
-                <tr><td colSpan={6} className="py-8 text-center text-muted-foreground">No batches match this filter.</td></tr>
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-muted-foreground">
+                    No batches match this filter.
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>

@@ -4,7 +4,10 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/lib/theme";
+import { AuthProvider } from "@/lib/auth";
+import { AuthGate } from "@/components/AuthGate";
 import { AppLayout } from "@/components/AppLayout";
+import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import POS from "./pages/POS";
 import Inventory from "./pages/Inventory";
@@ -24,19 +27,24 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Routes>
-            <Route element={<AppLayout />}>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/pos" element={<POS />} />
-              <Route path="/inventory" element={<Inventory />} />
-              <Route path="/purchases" element={<Purchases />} />
-              <Route path="/customers" element={<Customers />} />
-              <Route path="/suppliers" element={<Suppliers />} />
-              <Route path="/reports" element={<Reports />} />
-              <Route path="/settings" element={<Settings />} />
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <AuthProvider>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route element={<AuthGate />}>
+                <Route element={<AppLayout />}>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/pos" element={<POS />} />
+                  <Route path="/inventory" element={<Inventory />} />
+                  <Route path="/purchases" element={<Purchases />} />
+                  <Route path="/customers" element={<Customers />} />
+                  <Route path="/suppliers" element={<Suppliers />} />
+                  <Route path="/reports" element={<Reports />} />
+                  <Route path="/settings" element={<Settings />} />
+                </Route>
+              </Route>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </AuthProvider>
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>

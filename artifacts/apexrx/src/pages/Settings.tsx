@@ -7,17 +7,50 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useTheme } from "@/lib/theme";
-import { Save, Moon, Sun } from "lucide-react";
+import { Save, Moon, Sun, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function Settings() {
   const [s, setS] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const { theme, toggle } = useTheme();
 
-  useEffect(() => { api.settings().then(setS); }, []);
+  useEffect(() => {
+    api
+      .settings()
+      .then((data) => {
+        const out: Record<string, string> = {};
+        Object.entries(data ?? {}).forEach(([k, v]) => {
+          out[k] = v == null ? "" : String(v);
+        });
+        setS(out);
+      })
+      .catch((err) => toast.error(err?.message ?? "Failed to load settings"))
+      .finally(() => setLoading(false));
+  }, []);
 
-  const update = (k: string, v: string) => setS(p => ({ ...p, [k]: v }));
-  const save = async () => { await api.saveSettings(s); toast.success("Settings saved"); };
+  const update = (k: string, v: string) => setS((p) => ({ ...p, [k]: v }));
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.saveSettings(s);
+      toast.success("Settings saved");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to save settings");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex h-64 items-center justify-center text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -25,31 +58,59 @@ export default function Settings() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="border-border/60 bg-card/80 lg:col-span-2">
-          <CardHeader><CardTitle>Shop Information</CardTitle><CardDescription>Used on invoices and reports.</CardDescription></CardHeader>
+          <CardHeader>
+            <CardTitle>Shop Information</CardTitle>
+            <CardDescription>Used on invoices and reports.</CardDescription>
+          </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
-            <Field label="Shop Name" v={s.shop_name} onChange={v => update("shop_name", v)} />
-            <Field label="GSTIN" v={s.gstin} onChange={v => update("gstin", v)} mono />
-            <Field label="Phone" v={s.phone} onChange={v => update("phone", v)} />
-            <Field label="Email" v={s.email} onChange={v => update("email", v)} />
-            <div className="md:col-span-2"><Field label="Address" v={s.address} onChange={v => update("address", v)} /></div>
-            <Field label="Low Stock Threshold" v={s.low_stock_threshold} onChange={v => update("low_stock_threshold", v)} type="number" />
+            <Field label="Shop Name" v={s.shopName} onChange={(v) => update("shopName", v)} />
+            <Field label="GSTIN" v={s.gst} onChange={(v) => update("gst", v)} mono />
+            <Field label="Phone" v={s.phone} onChange={(v) => update("phone", v)} />
+            <Field label="Email" v={s.email} onChange={(v) => update("email", v)} />
+            <div className="md:col-span-2">
+              <Field label="Address" v={s.address} onChange={(v) => update("address", v)} />
+            </div>
+            <Field
+              label="Low Stock Threshold"
+              v={s.lowStockThreshold}
+              onChange={(v) => update("lowStockThreshold", v)}
+              type="number"
+            />
             <div className="flex items-end">
-              <Button onClick={save} className="bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90"><Save className="mr-2 h-4 w-4" />Save Settings</Button>
+              <Button
+                onClick={save}
+                disabled={saving}
+                className="bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90"
+              >
+                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                Save Settings
+              </Button>
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-border/60 bg-card/80">
-          <CardHeader><CardTitle>Appearance</CardTitle><CardDescription>Switch between light and dark mode.</CardDescription></CardHeader>
+          <CardHeader>
+            <CardTitle>Appearance</CardTitle>
+            <CardDescription>Switch between light and dark mode.</CardDescription>
+          </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/20 p-4">
               <div className="flex items-center gap-3">
-                {theme === "dark"
-                  ? <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-accent text-primary-foreground"><Moon className="h-5 w-5" /></div>
-                  : <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-warning text-primary-foreground"><Sun className="h-5 w-5" /></div>}
+                {theme === "dark" ? (
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-accent text-primary-foreground">
+                    <Moon className="h-5 w-5" />
+                  </div>
+                ) : (
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-warning text-primary-foreground">
+                    <Sun className="h-5 w-5" />
+                  </div>
+                )}
                 <div>
                   <p className="text-sm font-semibold">Dark Mode</p>
-                  <p className="text-xs text-muted-foreground">Currently {theme === "dark" ? "enabled" : "disabled"}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Currently {theme === "dark" ? "enabled" : "disabled"}
+                  </p>
                 </div>
               </div>
               <Switch checked={theme === "dark"} onCheckedChange={toggle} />
@@ -62,10 +123,21 @@ export default function Settings() {
   );
 }
 
-const Field = ({ label, v, onChange, type = "text", mono = false }:
-  { label: string; v?: string; onChange: (v: string) => void; type?: string; mono?: boolean }) => (
+const Field = ({
+  label,
+  v,
+  onChange,
+  type = "text",
+  mono = false,
+}: {
+  label: string;
+  v?: string;
+  onChange: (v: string) => void;
+  type?: string;
+  mono?: boolean;
+}) => (
   <div className="grid gap-1.5">
     <Label>{label}</Label>
-    <Input type={type} value={v ?? ""} onChange={e => onChange(e.target.value)} className={mono ? "font-mono" : ""} />
+    <Input type={type} value={v ?? ""} onChange={(e) => onChange(e.target.value)} className={mono ? "font-mono" : ""} />
   </div>
 );
