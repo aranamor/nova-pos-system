@@ -5,14 +5,35 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Filter, AlertTriangle, Edit2, Trash2 } from "lucide-react";
+import { Plus, Search, Filter, AlertTriangle, Edit2, Trash2, ChevronRight } from "lucide-react";
 import { formatINR } from "@/lib/format";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { BatchDetailsDialog, type BatchRow } from "@/components/BatchDetailsDialog";
+
+// TODO: replace with api.productBatches(id) when backend exposes /products/:id/batches.
+// For now we synthesize plausible batch splits from the single-batch product record.
+function synthesizeBatches(p: any): BatchRow[] {
+  const shiftMonth = (ym: string, delta: number) => {
+    const [y, m] = ym.split("-").map(Number);
+    const d = new Date(y, m - 1 + delta, 1);
+    return d.toISOString().slice(0, 7);
+  };
+  const q = Math.max(1, p.quantity);
+  const a = Math.max(1, Math.floor(q * 0.55));
+  const b = Math.max(1, Math.floor(q * 0.3));
+  const c = Math.max(0, q - a - b);
+  return [
+    { batch: p.batch, quantity: a, mrp: p.mrp, sale_rate_inclusive: p.sale_rate_inclusive, expiry: p.expiry, purchase_rate: p.purchase_rate },
+    { batch: `${p.batch}-B`, quantity: b, mrp: p.mrp, sale_rate_inclusive: p.sale_rate_inclusive, expiry: shiftMonth(p.expiry, -2), purchase_rate: p.purchase_rate },
+    ...(c > 0 ? [{ batch: `${p.batch}-C`, quantity: c, mrp: p.mrp, sale_rate_inclusive: p.sale_rate_inclusive, expiry: shiftMonth(p.expiry, -5), purchase_rate: p.purchase_rate }] : []),
+  ];
+}
 
 export default function Inventory() {
   const [products, setProducts] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "low" | "exp1" | "exp2" | "exp3" | "expired">("all");
+  const [selected, setSelected] = useState<any | null>(null);
 
   useEffect(() => { api.products().then(setProducts); }, []);
 
@@ -77,9 +98,12 @@ export default function Inventory() {
                   const expired = p.expiry < todayMonth;
                   const soon = !expired && p.expiry <= monthsAhead(3);
                   return (
-                    <tr key={p.id} className="border-t border-border/60 hover:bg-muted/20">
+                    <tr key={p.id} onClick={() => setSelected(p)} className="cursor-pointer border-t border-border/60 hover:bg-muted/20">
                       <td className="px-4 py-3">
-                        <div className="font-medium">{p.name}</div>
+                        <div className="flex items-center gap-1.5 font-medium">
+                          {p.name}
+                          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                        </div>
                         <div className="font-mono text-xs text-muted-foreground">HSN {p.hsn} · {p.packaging}</div>
                       </td>
                       <td className="px-3 py-3 font-mono text-xs">{p.batch}</td>
@@ -95,7 +119,7 @@ export default function Inventory() {
                           : <Badge variant="secondary" className="font-mono">{p.expiry}</Badge>}
                       </td>
                       <td className="px-3 py-3 text-center font-mono text-xs">{p.cgst}+{p.sgst}%</td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-end gap-1">
                           <Button variant="ghost" size="icon" className="h-8 w-8"><Edit2 className="h-3.5 w-3.5" /></Button>
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
@@ -110,6 +134,13 @@ export default function Inventory() {
           </div>
         </CardContent>
       </Card>
+
+      <BatchDetailsDialog
+        open={!!selected}
+        onOpenChange={v => !v && setSelected(null)}
+        product={selected}
+        batches={selected ? synthesizeBatches(selected) : []}
+      />
     </div>
   );
 }
