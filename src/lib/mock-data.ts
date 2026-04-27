@@ -67,8 +67,24 @@ export const mockData = {
     { id: 104, bill_number: "HOLD-9", patient_name: "Walk-in", patient_mobile: "0000000000", grand_total: 320, bill_date: today.toISOString(), status: "Hold" },
   ],
   purchases: [
-    { id: 11, invoice_number: "PUR-2401", supplier_name: "MedSource Distributors", purchase_date: iso(today), grand_total: 18450, status: "Completed", tax_type: "Local" },
-    { id: 12, invoice_number: "PUR-2402", supplier_name: "PharmaPlus Ltd.", purchase_date: iso(today), grand_total: 9220, status: "Draft", tax_type: "Interstate" },
+    {
+      id: 11, invoice_number: "PUR-2401", supplier_id: 1, supplier_name: "MedSource Distributors",
+      purchase_date: iso(today), status: "Completed", tax_type: "Local",
+      subtotal: 16473.21, cgst: 988.39, sgst: 988.39, igst: 0, grand_total: 18450,
+      items: [
+        { product_id: 1, name: "Paracetamol 500mg", batch: "PCM2401", expiry: future(8), quantity: 500, purchase_rate: 14, cgst: 6, sgst: 6, amount: 7840 },
+        { product_id: 8, name: "ORS Sachet", batch: "ORS2401", expiry: future(18), quantity: 800, purchase_rate: 11, cgst: 6, sgst: 6, amount: 9856 },
+      ],
+    },
+    {
+      id: 12, invoice_number: "PUR-2402", supplier_id: 2, supplier_name: "PharmaPlus Ltd.",
+      purchase_date: iso(today), status: "Draft", tax_type: "Interstate",
+      subtotal: 7813.56, cgst: 0, sgst: 0, igst: 1406.44, grand_total: 9220,
+      items: [
+        { product_id: 2, name: "Azithromycin 500mg", batch: "AZT2312", expiry: future(14), quantity: 80, purchase_rate: 70, cgst: 0, sgst: 0, igst: 18, amount: 6608 },
+        { product_id: 5, name: "Pantoprazole 40mg", batch: "PNT2403", expiry: future(1), quantity: 30, purchase_rate: 50, cgst: 0, sgst: 0, igst: 18, amount: 1770 },
+      ],
+    },
   ],
   reportsByType(type: string) {
     switch (type) {
