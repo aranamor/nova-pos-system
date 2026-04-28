@@ -331,7 +331,7 @@ export function ProductFormDialog({ open, onOpenChange, initial, onSaved }: Prop
             <Button
               type="submit"
               disabled={busy}
-              className="bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90"
+              className=""
             >
               {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {initial?.id ? "Update Product" : "Add to Catalog"}

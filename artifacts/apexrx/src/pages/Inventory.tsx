@@ -97,14 +97,14 @@ export default function Inventory() {
         actions={
           <Button
             onClick={onAdd}
-            className="bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90"
+            className=""
           >
             <Plus className="mr-2 h-4 w-4" /> Add Product
           </Button>
         }
       />
 
-      <Card className="border-border/60 bg-card/80">
+      <Card className="border-border bg-card">
         <CardContent className="space-y-4 p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-center">
             <div className="relative flex-1">

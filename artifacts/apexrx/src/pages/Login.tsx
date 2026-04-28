@@ -2,11 +2,10 @@ import { FormEvent, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { ApiError } from "@/lib/api";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Pill, Loader2, ShieldCheck, Eye, EyeOff } from "lucide-react";
+import { Loader2, ShieldCheck, Eye, EyeOff, ArrowRight, Activity, Lock } from "lucide-react";
 import { toast } from "sonner";
 
 export default function Login() {
@@ -17,12 +16,11 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [bootstrapping, setBootstrapping] = useState(false);
 
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -56,55 +54,86 @@ export default function Login() {
     }
   };
 
-  // Detect "no users yet" by attempting a benign signup probe.
-  const tryBootstrap = async () => {
-    setBootstrapping(true);
-    try {
-      // attempt to navigate to /signup; if signup is closed (users exist) we
-      // simply show a "must be invited" notice on that page.
-      navigate("/signup");
-    } finally {
-      setBootstrapping(false);
-    }
-  };
-
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background p-4">
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/15 via-background to-primary/5" />
-      <div className="pointer-events-none absolute -left-40 -top-40 h-96 w-96 rounded-full bg-primary/20 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-40 -right-40 h-96 w-96 rounded-full bg-primary/20 blur-3xl" />
+    <div className="grid min-h-screen grid-cols-1 bg-background lg:grid-cols-[1fr_minmax(420px,520px)]">
+      {/* Left brand pane */}
+      <div className="relative hidden overflow-hidden border-r border-border bg-card-muted lg:flex lg:flex-col lg:justify-between lg:p-10">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
+            <span className="font-mono text-[13px] font-bold text-primary-foreground">Rx</span>
+          </div>
+          <div className="leading-tight">
+            <div className="text-sm font-semibold tracking-tight">ApexRx</div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Pharmacy Console
+            </div>
+          </div>
+        </div>
 
-      <Card className="relative z-10 w-full max-w-md border-border/60 bg-card/90 backdrop-blur-xl shadow-2xl">
-        <CardHeader className="space-y-3 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary shadow-glow">
-            <Pill className="h-7 w-7 text-primary-foreground" />
+        <div className="max-w-md space-y-6">
+          <h2 className="text-3xl font-semibold leading-tight tracking-tight">
+            The pharmacy operating system, built for precision.
+          </h2>
+          <p className="text-[14px] text-muted-foreground">
+            Inventory, billing, batch tracking, GST compliance and audit-ready reporting — in a single,
+            keyboard-first console designed for high-volume retail and hospital pharmacies.
+          </p>
+          <div className="grid grid-cols-2 gap-x-8 gap-y-4 pt-2 text-[12px]">
+            <Feature icon={<ShieldCheck className="h-3.5 w-3.5" />} label="SOC-2 ready audit log" />
+            <Feature icon={<Lock className="h-3.5 w-3.5" />} label="Role-based access control" />
+            <Feature icon={<Activity className="h-3.5 w-3.5" />} label="Real-time stock & expiry" />
+            <Feature icon={<ArrowRight className="h-3.5 w-3.5" />} label="GST invoicing built-in" />
           </div>
-          <div>
-            <CardTitle className="text-2xl tracking-tight">Nova POS</CardTitle>
-            <CardDescription className="flex items-center justify-center gap-1.5">
-              <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
-              Secure pharmacy console · Sign in to continue
-            </CardDescription>
+        </div>
+
+        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+          <span>© {new Date().getFullYear()} ApexRx Systems</span>
+          <span className="font-mono">v1.0.0</span>
+        </div>
+      </div>
+
+      {/* Right form pane */}
+      <div className="flex flex-col justify-center px-6 py-12 sm:px-12">
+        <div className="mx-auto w-full max-w-sm">
+          <div className="mb-8 lg:hidden">
+            <div className="mb-2 flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
+                <span className="font-mono text-[13px] font-bold text-primary-foreground">Rx</span>
+              </div>
+              <span className="text-sm font-semibold tracking-tight">ApexRx</span>
+            </div>
           </div>
-        </CardHeader>
-        <CardContent>
-          <form className="space-y-4" onSubmit={onSubmit}>
+
+          <h1 className="text-[22px] font-semibold tracking-tight">Sign in to your console</h1>
+          <p className="mt-1.5 text-[13px] text-muted-foreground">
+            Enter your credentials to access ApexRx.
+          </p>
+
+          <form className="mt-8 space-y-4" onSubmit={onSubmit}>
             <div className="space-y-1.5">
-              <Label htmlFor="username">Username or email</Label>
+              <Label htmlFor="username" className="text-[12px] font-medium">
+                Username or email
+              </Label>
               <Input
                 id="username"
                 value={username}
                 autoFocus
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="you@nova.pos"
+                placeholder="you@apexrx.io"
                 autoComplete="username"
                 maxLength={255}
+                className="h-10"
               />
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <Label htmlFor="password">Password</Label>
-                <Link to="/forgot-password" className="text-xs text-primary hover:underline">
+                <Label htmlFor="password" className="text-[12px] font-medium">
+                  Password
+                </Label>
+                <Link
+                  to="/forgot-password"
+                  className="text-[12px] font-medium text-primary hover:underline"
+                >
                   Forgot password?
                 </Link>
               </div>
@@ -117,49 +146,57 @@ export default function Login() {
                   placeholder="••••••••"
                   autoComplete="current-password"
                   maxLength={128}
+                  className="h-10 pr-10"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPw((v) => !v)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
                   aria-label={showPw ? "Hide password" : "Show password"}
                 >
                   {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
-            <Button
-              type="submit"
-              disabled={busy}
-              className="w-full bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90"
-            >
+            <Button type="submit" disabled={busy} className="h-10 w-full">
               {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Sign in
             </Button>
 
-            <div className="relative my-2">
+            <div className="relative my-1">
               <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t border-border/60" />
+                <span className="w-full border-t border-border" />
               </div>
-              <div className="relative flex justify-center text-[11px] uppercase tracking-widest">
-                <span className="bg-card px-2 text-muted-foreground">Setup</span>
+              <div className="relative flex justify-center text-[10px] uppercase tracking-widest">
+                <span className="bg-background px-2 text-muted-foreground">First-time setup</span>
               </div>
             </div>
             <Button
               type="button"
               variant="outline"
-              className="w-full"
-              disabled={bootstrapping}
-              onClick={tryBootstrap}
+              className="h-10 w-full"
+              onClick={() => navigate("/signup")}
             >
-              First-time setup · Create admin
+              Create administrator account
             </Button>
-            <p className="pt-2 text-center text-[11px] text-muted-foreground">
-              Sessions expire after 12 hours · Failed attempts are rate-limited and audited.
+
+            <p className="pt-3 text-center text-[11px] text-muted-foreground">
+              Sessions expire after 12 hours. Failed attempts are rate-limited and audited.
             </p>
           </form>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Feature({ icon, label }: { icon: React.ReactNode; label: string }) {
+  return (
+    <div className="flex items-center gap-2 text-muted-foreground">
+      <span className="flex h-6 w-6 items-center justify-center rounded-md border border-border bg-card text-primary">
+        {icon}
+      </span>
+      <span>{label}</span>
     </div>
   );
 }

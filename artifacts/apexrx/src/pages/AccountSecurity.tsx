@@ -100,7 +100,7 @@ export default function AccountSecurity() {
                 <Label htmlFor="cf">Confirm new password</Label>
                 <Input id="cf" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required maxLength={128} autoComplete="new-password" />
               </div>
-              <Button type="submit" disabled={busy} className="bg-gradient-primary text-primary-foreground shadow-glow">
+              <Button type="submit" disabled={busy} className="bg-primary text-primary-foreground shadow-md">
                 {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Update password
               </Button>

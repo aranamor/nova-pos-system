@@ -52,14 +52,14 @@ export default function Customers() {
               setEditing(null);
               setFormOpen(true);
             }}
-            className="bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90"
+            className=""
           >
             <Plus className="mr-2 h-4 w-4" /> Add Customer
           </Button>
         }
       />
 
-      <Card className="border-border/60 bg-card/80">
+      <Card className="border-border bg-card">
         <CardContent className="p-4">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -77,11 +77,11 @@ export default function Customers() {
         {filtered.map((c) => (
           <Card
             key={c.id}
-            className="border-border/60 bg-card/80 transition-all hover:shadow-elev-lg hover:-translate-y-0.5"
+            className="border-border bg-card transition-all hover:shadow-elev-lg hover:-translate-y-0.5"
           >
             <CardContent className="space-y-3 p-4">
               <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-accent text-lg font-bold text-primary-foreground shadow-glow">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-accent text-lg font-bold text-primary-foreground shadow-md">
                   {(c.name || "?").charAt(0)}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -134,7 +134,7 @@ export default function Customers() {
           </Card>
         ))}
         {filtered.length === 0 && (
-          <Card className="border-border/60 bg-card/80 md:col-span-2 xl:col-span-3">
+          <Card className="border-border bg-card md:col-span-2 xl:col-span-3">
             <CardContent className="py-10 text-center text-sm text-muted-foreground">
               No customers yet — add your first patient.
             </CardContent>

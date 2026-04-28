@@ -32,7 +32,7 @@ export default function Dashboard() {
         title="Welcome back 👋"
         description="Here's a snapshot of your pharmacy today."
         actions={
-          <Button asChild className="bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90">
+          <Button asChild className="">
             <Link to="/pos">+ New Bill</Link>
           </Button>
         }
@@ -47,7 +47,7 @@ export default function Dashboard() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2 border-border/60 bg-card/80">
+        <Card className="lg:col-span-2 border-border bg-card">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
@@ -94,7 +94,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/60 bg-card/80">
+        <Card className="border-border bg-card">
           <CardHeader>
             <CardTitle>Recent Bills</CardTitle>
             <CardDescription>Latest 5 transactions</CardDescription>

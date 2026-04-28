@@ -88,7 +88,7 @@ export default function Reports() {
         description="Generate date-filtered insights across sales, GST, inventory and compliance categories."
       />
 
-      <Card className="border-border/60 bg-card/80">
+      <Card className="border-border bg-card">
         <CardContent className="grid gap-3 p-5 md:grid-cols-6">
           <div className="grid gap-1.5 md:col-span-2">
             <Label>Report Type</Label>
@@ -138,7 +138,7 @@ export default function Reports() {
             <Button
               onClick={run}
               disabled={loading}
-              className="bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90"
+              className=""
             >
               {loading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -155,7 +155,7 @@ export default function Reports() {
         </CardContent>
       </Card>
 
-      <Card className="border-border/60 bg-card/80">
+      <Card className="border-border bg-card">
         <CardContent className="p-0">
           {loading ? (
             <div className="flex h-32 items-center justify-center text-muted-foreground">

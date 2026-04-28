@@ -139,7 +139,7 @@ export function StockAdjustDialog({ open, onOpenChange, product, onAdjusted }: P
             <Button
               type="submit"
               disabled={busy || batches.length === 0}
-              className="bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90"
+              className=""
             >
               {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Adjust Stock

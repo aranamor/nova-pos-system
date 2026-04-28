@@ -2,16 +2,25 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, FileText, Search, Receipt, Wallet, FileClock, CheckCircle2 } from "lucide-react";
+import {
+  Plus,
+  FileText,
+  Search,
+  Receipt,
+  Wallet,
+  FileClock,
+  CheckCircle2,
+  ChevronRight,
+  Inbox,
+} from "lucide-react";
 import { formatINR, formatDate } from "@/lib/format";
 import { PurchaseFormDialog } from "@/components/PurchaseFormDialog";
 import { PurchaseDetailsDialog } from "@/components/PurchaseDetailsDialog";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 export default function Purchases() {
   const [rows, setRows] = useState<any[]>([]);
@@ -35,7 +44,9 @@ export default function Purchases() {
         if (status !== "all" && r.status !== status) return false;
         if (
           search &&
-          !`${r.bill_number ?? ""} ${r.supplier_name ?? ""}`.toLowerCase().includes(search.toLowerCase())
+          !`${r.bill_number ?? ""} ${r.supplier_name ?? ""}`
+            .toLowerCase()
+            .includes(search.toLowerCase())
         )
           return false;
         return true;
@@ -51,104 +62,126 @@ export default function Purchases() {
   }, [rows]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHeader
         title="Purchases"
-        description="Inward supply from vendors, drafts and completed purchases."
+        description="Inward supply from vendors. Drafts and completed bills, audit-ready."
         actions={
-          <Button
-            onClick={() => setFormOpen(true)}
-            className="bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90"
-          >
-            <Plus className="mr-2 h-4 w-4" /> New Purchase
+          <Button onClick={() => setFormOpen(true)} size="sm" className="h-9">
+            <Plus className="mr-1.5 h-3.5 w-3.5" /> New Purchase
           </Button>
         }
       />
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatCard icon={Receipt} label="Total Purchases" value={String(stats.count)} />
-        <StatCard icon={CheckCircle2} label="Completed" value={String(stats.completed)} />
-        <StatCard icon={FileClock} label="Drafts" value={String(stats.drafts)} />
-        <StatCard icon={Wallet} label="Total Spend" value={formatINR(stats.totalSpend)} />
+        <StatCard icon={Receipt} label="Total Bills" value={String(stats.count)} variant="primary" />
+        <StatCard
+          icon={CheckCircle2}
+          label="Completed"
+          value={String(stats.completed)}
+          variant="success"
+        />
+        <StatCard icon={FileClock} label="Drafts" value={String(stats.drafts)} variant="warning" />
+        <StatCard icon={Wallet} label="Total Spend" value={formatINR(stats.totalSpend)} variant="info" />
       </div>
 
-      <Card className="border-border/60 bg-card/80">
-        <CardContent className="space-y-4 p-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center">
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search bill or supplier…"
-                className="h-10 pl-10"
-              />
-            </div>
-            <Tabs value={status} onValueChange={(v) => setStatus(v as any)}>
-              <TabsList className="bg-muted/40">
-                <TabsTrigger value="all">All</TabsTrigger>
-                <TabsTrigger value="Completed">Completed</TabsTrigger>
-                <TabsTrigger value="Draft">Drafts</TabsTrigger>
-              </TabsList>
-            </Tabs>
+      <div className="surface overflow-hidden">
+        <div className="flex flex-col gap-3 border-b border-border p-3 md:flex-row md:items-center">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search bill number or supplier…"
+              className="h-9 pl-8 text-[13px]"
+            />
           </div>
+          <Tabs value={status} onValueChange={(v) => setStatus(v as any)}>
+            <TabsList className="h-9 bg-card-muted">
+              <TabsTrigger value="all" className="h-7 text-[12px]">
+                All
+              </TabsTrigger>
+              <TabsTrigger value="Completed" className="h-7 text-[12px]">
+                Completed
+              </TabsTrigger>
+              <TabsTrigger value="Draft" className="h-7 text-[12px]">
+                Drafts
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
 
-          <div className="overflow-x-auto rounded-lg border border-border/60">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3 text-left">Bill #</th>
-                  <th className="px-3 py-3 text-left">Supplier</th>
-                  <th className="px-3 py-3 text-left">Date</th>
-                  <th className="px-3 py-3 text-center">Tax</th>
-                  <th className="px-3 py-3 text-right">Total</th>
-                  <th className="px-3 py-3 text-center">Status</th>
-                  <th className="px-3 py-3" />
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((r) => (
-                  <tr
-                    key={r.id}
-                    onClick={() => setViewing(r)}
-                    className="cursor-pointer border-t border-border/60 hover:bg-muted/20"
-                  >
-                    <td className="px-4 py-3 font-mono font-semibold">{r.bill_number}</td>
-                    <td className="px-3 py-3">{r.supplier_name}</td>
-                    <td className="px-3 py-3 text-muted-foreground">{formatDate(r.bill_date)}</td>
-                    <td className="px-3 py-3 text-center">
-                      <Badge variant="secondary">{r.tax_type}</Badge>
-                    </td>
-                    <td className="px-3 py-3 text-right font-mono font-semibold">{formatINR(r.grand_total)}</td>
-                    <td className="px-3 py-3 text-center">
-                      {r.status === "Completed" ? (
-                        <Badge className="bg-success text-success-foreground hover:bg-success">Completed</Badge>
-                      ) : (
-                        <Badge variant="outline">Draft</Badge>
+        <div className="overflow-x-auto">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Bill #</th>
+                <th>Supplier</th>
+                <th>Date</th>
+                <th className="text-center">Tax</th>
+                <th className="text-right">Total</th>
+                <th className="text-center">Status</th>
+                <th className="w-12" />
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r) => (
+                <tr
+                  key={r.id}
+                  onClick={() => setViewing(r)}
+                  className="cursor-pointer"
+                >
+                  <td className="font-mono text-[13px] font-semibold">{r.bill_number}</td>
+                  <td>{r.supplier_name}</td>
+                  <td className="text-muted-foreground">{formatDate(r.bill_date)}</td>
+                  <td className="text-center">
+                    <span className="rounded border border-border bg-card-muted px-1.5 py-0.5 font-mono text-[10px] uppercase">
+                      {r.tax_type}
+                    </span>
+                  </td>
+                  <td className="text-right font-mono font-semibold tabular-nums">
+                    {formatINR(r.grand_total)}
+                  </td>
+                  <td className="text-center">
+                    <span
+                      className={cn(
+                        "pill",
+                        r.status === "Completed"
+                          ? "bg-success-soft text-success"
+                          : "bg-warning-soft text-warning",
                       )}
-                    </td>
-                    <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => setViewing(r)}>
-                          <FileText className="mr-1.5 h-3.5 w-3.5" />
-                          View
-                        </Button>
+                    >
+                      {r.status}
+                    </span>
+                  </td>
+                  <td>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  </td>
+                </tr>
+              ))}
+              {!filtered.length && (
+                <tr>
+                  <td colSpan={7} className="py-16 text-center">
+                    <div className="mx-auto flex max-w-xs flex-col items-center gap-2">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted">
+                        <Inbox className="h-4 w-4 text-muted-foreground" />
                       </div>
-                    </td>
-                  </tr>
-                ))}
-                {!filtered.length && (
-                  <tr>
-                    <td colSpan={7} className="py-10 text-center text-muted-foreground">
-                      No purchases match your filters.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+                      <p className="text-[13px] font-medium">No purchases yet</p>
+                      <p className="text-[12px] text-muted-foreground">
+                        Record a new purchase to add stock to your inventory.
+                      </p>
+                      <Button size="sm" className="mt-2 h-8" onClick={() => setFormOpen(true)}>
+                        <Plus className="mr-1.5 h-3.5 w-3.5" />
+                        New Purchase
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       <PurchaseFormDialog open={formOpen} onOpenChange={setFormOpen} onSaved={load} />
       <PurchaseDetailsDialog

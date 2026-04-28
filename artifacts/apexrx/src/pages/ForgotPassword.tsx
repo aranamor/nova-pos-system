@@ -31,7 +31,7 @@ export default function ForgotPassword() {
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/15 via-background to-primary/5" />
       <Card className="relative z-10 w-full max-w-md border-border/60 bg-card/90 backdrop-blur-xl shadow-2xl">
         <CardHeader className="space-y-3 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary shadow-glow">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary shadow-md">
             <Pill className="h-7 w-7 text-primary-foreground" />
           </div>
           <div>
@@ -63,7 +63,7 @@ export default function ForgotPassword() {
                 <Label htmlFor="email">Email</Label>
                 <Input id="email" type="email" value={email} autoFocus required onChange={(e) => setEmail(e.target.value)} />
               </div>
-              <Button type="submit" disabled={busy} className="w-full bg-gradient-primary text-primary-foreground shadow-glow">
+              <Button type="submit" disabled={busy} className="w-full bg-primary text-primary-foreground shadow-md">
                 {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Send reset link
               </Button>

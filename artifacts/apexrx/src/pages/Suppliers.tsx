@@ -49,14 +49,14 @@ export default function Suppliers() {
               setEditing(null);
               setFormOpen(true);
             }}
-            className="bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90"
+            className=""
           >
             <Plus className="mr-2 h-4 w-4" /> Add Supplier
           </Button>
         }
       />
 
-      <Card className="border-border/60 bg-card/80">
+      <Card className="border-border bg-card">
         <CardContent className="p-4">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -72,7 +72,7 @@ export default function Suppliers() {
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {filtered.map((s) => (
-          <Card key={s.id} className="border-border/60 bg-card/80 transition-all hover:shadow-elev-lg">
+          <Card key={s.id} className="border-border bg-card transition-all hover:shadow-elev-lg">
             <CardContent className="space-y-3 p-5">
               <div className="flex items-start justify-between">
                 <div className="min-w-0">
@@ -84,7 +84,7 @@ export default function Suppliers() {
                     </p>
                   )}
                 </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-primary text-primary-foreground shadow-glow">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-md">
                   {(s.name || "?").charAt(0)}
                 </div>
               </div>
@@ -133,7 +133,7 @@ export default function Suppliers() {
           </Card>
         ))}
         {filtered.length === 0 && (
-          <Card className="border-border/60 bg-card/80 md:col-span-2 xl:col-span-3">
+          <Card className="border-border bg-card md:col-span-2 xl:col-span-3">
             <CardContent className="py-10 text-center text-sm text-muted-foreground">
               No suppliers yet — add your first vendor.
             </CardContent>

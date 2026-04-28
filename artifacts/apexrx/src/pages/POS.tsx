@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/PageHeader";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -15,6 +14,7 @@ import {
   Loader2,
   History,
   AlertTriangle,
+  ShoppingBag,
 } from "lucide-react";
 import {
   Dialog,
@@ -24,8 +24,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatINR } from "@/lib/format";
-import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface CartLine {
   product_id: number;
@@ -68,7 +68,6 @@ export default function POS() {
     loadHeld();
   }, []);
 
-  // Debounced product+batch search
   useEffect(() => {
     if (!search || search.length < 2) {
       setSearchRows([]);
@@ -167,10 +166,7 @@ export default function POS() {
   };
 
   const requiresRx = useMemo(
-    () =>
-      cart.some(
-        (l) => l.is_h1 || l.is_narcotic || l.is_prescription_required,
-      ),
+    () => cart.some((l) => l.is_h1 || l.is_narcotic || l.is_prescription_required),
     [cart],
   );
 
@@ -247,9 +243,7 @@ export default function POS() {
         mobile: full.patientMobile ?? full.patient_mobile ?? "",
         doctor: full.doctorName ?? full.doctor_name ?? "",
       });
-      setOverallDiscount(
-        Number(full.overallDiscountPercent ?? full.overall_discount_percent ?? 0),
-      );
+      setOverallDiscount(Number(full.overallDiscountPercent ?? full.overall_discount_percent ?? 0));
       const items: CartLine[] = (full.items ?? []).map((it: any) => ({
         product_id: Number(it.product_id ?? it.productId ?? 0),
         batch_id: Number(it.batch_id ?? it.batchId ?? 0),
@@ -293,200 +287,213 @@ export default function POS() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHeader
         title="Point of Sale"
-        description="Create bills, hold drafts, recall later."
+        description="Create bills, hold drafts, recall later. Optimised for keyboard-first checkout."
         actions={
-          <Button variant="outline" onClick={openRecall}>
-            <FileClock className="mr-2 h-4 w-4" /> Held ({heldBills.length})
+          <Button variant="outline" size="sm" className="h-9" onClick={openRecall}>
+            <FileClock className="mr-1.5 h-3.5 w-3.5" />
+            Held{" "}
+            <span className="ml-1.5 rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]">
+              {heldBills.length}
+            </span>
           </Button>
         }
       />
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
+      <div className="grid gap-4 lg:grid-cols-[1fr_400px]">
         <div className="space-y-4">
-          <Card className="border-border/60 bg-card/80">
-            <CardContent className="p-4">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Search product or batch (min 2 chars)…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="h-11 pl-10"
-                />
-                {searchLoading && (
-                  <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
-                )}
+          {/* Search */}
+          <div className="surface p-3">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search product, batch, or scan barcode (min 2 chars)…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-10 pl-10 text-[13px]"
+              />
+              {searchLoading && (
+                <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+              )}
+            </div>
+            {!!searchRows.length && (
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                {searchRows.map((row) => (
+                  <button
+                    key={row.batch_id}
+                    onClick={() => addToCart(row)}
+                    className="group flex items-center justify-between rounded-md border border-border bg-card p-2.5 text-left transition-colors hover:border-primary hover:bg-muted/40"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="flex items-center gap-1.5 truncate text-[13px] font-medium">
+                        {row.name}
+                        {row.is_h1 && (
+                          <span className="pill bg-destructive-soft text-destructive">H1</span>
+                        )}
+                        {row.is_narcotic && (
+                          <span className="pill bg-warning-soft text-warning">NAR</span>
+                        )}
+                        {row.is_prescription_required && (
+                          <span className="pill bg-info-soft text-info">Rx</span>
+                        )}
+                      </p>
+                      <p className="font-mono text-[11px] text-muted-foreground">
+                        {row.batch_number} · {Number(row.quantity).toFixed(2)} {row.sale_unit} ·{" "}
+                        Exp {row.expiry}
+                      </p>
+                    </div>
+                    <div className="ml-3 text-right">
+                      <p className="font-mono text-[13px] font-semibold tabular-nums">
+                        {formatINR(row.sale_rate_incl)}
+                      </p>
+                      <Plus className="ml-auto h-4 w-4 text-primary opacity-0 transition group-hover:opacity-100" />
+                    </div>
+                  </button>
+                ))}
               </div>
-              {!!searchRows.length && (
-                <div className="mt-3 grid gap-2 md:grid-cols-2">
-                  {searchRows.map((row) => (
-                    <button
-                      key={row.batch_id}
-                      onClick={() => addToCart(row)}
-                      className="group flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 p-3 text-left transition-all hover:border-primary hover:shadow-glow"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold">
-                          {row.name}
-                          {row.is_h1 && (
-                            <Badge variant="destructive" className="ml-1.5 text-[9px]">H1</Badge>
-                          )}
-                          {row.is_narcotic && (
-                            <Badge className="ml-1 bg-amber-600 text-white text-[9px] hover:bg-amber-700">
-                              NAR
-                            </Badge>
-                          )}
-                          {row.is_prescription_required && (
-                            <Badge variant="secondary" className="ml-1 text-[9px]">Rx</Badge>
-                          )}
-                        </p>
-                        <p className="font-mono text-xs text-muted-foreground">
-                          {row.batch_number} · Stock: {Number(row.quantity).toFixed(2)}{" "}
-                          {row.sale_unit} · Exp: {row.expiry}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-mono text-sm font-semibold">
-                          {formatINR(row.sale_rate_incl)}
-                        </p>
-                        <Plus className="ml-auto h-4 w-4 text-primary opacity-0 transition group-hover:opacity-100" />
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {search.length >= 2 && !searchLoading && !searchRows.length && (
-                <div className="mt-3 rounded-lg border border-border/60 bg-muted/20 p-4 text-center text-xs text-muted-foreground">
-                  No in-stock batches match.
-                </div>
-              )}
-            </CardContent>
-          </Card>
+            )}
+            {search.length >= 2 && !searchLoading && !searchRows.length && (
+              <div className="mt-3 rounded-md border border-dashed border-border p-4 text-center text-[12px] text-muted-foreground">
+                No in-stock batches match. Record a purchase to add stock.
+              </div>
+            )}
+          </div>
 
-          <Card className="border-border/60 bg-card/80">
-            <CardHeader>
-              <CardTitle className="text-base">
-                Cart ({cart.length})
+          {/* Cart */}
+          <div className="surface overflow-hidden">
+            <div className="flex items-center justify-between border-b border-border bg-card-muted/40 px-3 py-2">
+              <div className="flex items-center gap-2">
+                <ShoppingBag className="h-4 w-4 text-muted-foreground" />
+                <span className="text-[13px] font-semibold">Cart</span>
+                <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]">
+                  {cart.length}
+                </span>
                 {editingBillId ? (
-                  <Badge className="ml-2" variant="secondary">
-                    Editing held bill
-                  </Badge>
+                  <span className="pill bg-info-soft text-info">editing held bill</span>
                 ) : null}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border/60 text-xs uppercase tracking-wider text-muted-foreground">
-                      <th className="px-4 py-2 text-left">Item</th>
-                      <th className="px-2 py-2 text-right">Qty</th>
-                      <th className="px-2 py-2 text-right">Rate</th>
-                      <th className="px-2 py-2 text-right">Disc%</th>
-                      <th className="px-2 py-2 text-right">Total</th>
-                      <th className="w-10" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cart.length === 0 && (
-                      <tr>
-                        <td colSpan={6} className="py-12 text-center text-sm text-muted-foreground">
-                          Search and add products to begin.
-                        </td>
-                      </tr>
-                    )}
-                    {cart.map((l, i) => (
-                      <tr key={i} className="border-b border-border/40 hover:bg-muted/20">
-                        <td className="px-4 py-2.5">
-                          <div className="font-medium">
-                            {l.name}
-                            {l.is_h1 && (
-                              <Badge variant="destructive" className="ml-1.5 text-[9px]">H1</Badge>
-                            )}
-                            {l.is_narcotic && (
-                              <Badge className="ml-1 bg-amber-600 text-white text-[9px] hover:bg-amber-700">
-                                NAR
-                              </Badge>
-                            )}
-                            {l.is_prescription_required && (
-                              <Badge variant="secondary" className="ml-1 text-[9px]">Rx</Badge>
-                            )}
-                          </div>
-                          <div className="font-mono text-xs text-muted-foreground">
-                            {l.batch} {l.expiry ? `· Exp ${l.expiry}` : ""} · Stock {l.available}
-                          </div>
-                        </td>
-                        <td className="px-2 py-2 text-right">
-                          <Input
-                            type="number"
-                            min={1}
-                            max={l.available}
-                            value={l.quantity}
-                            onChange={(e) =>
-                              updateLine(i, {
-                                quantity: Math.max(
-                                  1,
-                                  Math.min(Number(e.target.value) || 1, l.available),
-                                ),
-                              })
-                            }
-                            className="ml-auto h-8 w-16 text-right"
-                          />
-                        </td>
-                        <td className="px-2 py-2 text-right font-mono">{formatINR(l.rate)}</td>
-                        <td className="px-2 py-2 text-right">
-                          <Input
-                            type="number"
-                            min={0}
-                            max={100}
-                            value={l.discount}
-                            onChange={(e) =>
-                              updateLine(i, { discount: Number(e.target.value) || 0 })
-                            }
-                            className="ml-auto h-8 w-16 text-right"
-                          />
-                        </td>
-                        <td className="px-2 py-2 text-right font-mono font-semibold">
-                          {formatINR(l.rate * l.quantity * (1 - l.discount / 100))}
-                        </td>
-                        <td className="px-2 py-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-destructive"
-                            onClick={() => removeLine(i)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
               </div>
-            </CardContent>
-          </Card>
+              {cart.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-[12px] text-muted-foreground hover:text-destructive"
+                  onClick={() => setCart([])}
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Item</th>
+                    <th className="text-right">Qty</th>
+                    <th className="text-right">Rate</th>
+                    <th className="text-right">Disc%</th>
+                    <th className="text-right">Total</th>
+                    <th className="w-10" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {cart.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="py-12 text-center">
+                        <p className="text-[13px] text-muted-foreground">
+                          Search and add products to begin.
+                        </p>
+                      </td>
+                    </tr>
+                  )}
+                  {cart.map((l, i) => (
+                    <tr key={i}>
+                      <td>
+                        <div className="flex items-center gap-1.5 text-[13px] font-medium">
+                          {l.name}
+                          {l.is_h1 && (
+                            <span className="pill bg-destructive-soft text-destructive">H1</span>
+                          )}
+                          {l.is_narcotic && (
+                            <span className="pill bg-warning-soft text-warning">NAR</span>
+                          )}
+                          {l.is_prescription_required && (
+                            <span className="pill bg-info-soft text-info">Rx</span>
+                          )}
+                        </div>
+                        <div className="font-mono text-[11px] text-muted-foreground">
+                          {l.batch} {l.expiry ? `· Exp ${l.expiry}` : ""} · stock {l.available}
+                        </div>
+                      </td>
+                      <td className="text-right">
+                        <Input
+                          type="number"
+                          min={1}
+                          max={l.available}
+                          value={l.quantity}
+                          onChange={(e) =>
+                            updateLine(i, {
+                              quantity: Math.max(
+                                1,
+                                Math.min(Number(e.target.value) || 1, l.available),
+                              ),
+                            })
+                          }
+                          className="ml-auto h-8 w-16 text-right font-mono text-[13px]"
+                        />
+                      </td>
+                      <td className="text-right font-mono tabular-nums">{formatINR(l.rate)}</td>
+                      <td className="text-right">
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={l.discount}
+                          onChange={(e) =>
+                            updateLine(i, { discount: Number(e.target.value) || 0 })
+                          }
+                          className="ml-auto h-8 w-16 text-right font-mono text-[13px]"
+                        />
+                      </td>
+                      <td className="text-right font-mono font-semibold tabular-nums">
+                        {formatINR(l.rate * l.quantity * (1 - l.discount / 100))}
+                      </td>
+                      <td>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => removeLine(i)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
+        {/* Right column: Patient + Summary */}
         <div className="space-y-4">
-          <Card className="border-border/60 bg-card/80">
-            <CardHeader>
-              <CardTitle className="text-base">Patient</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid gap-1.5">
-                <Label>Name</Label>
+          <div className="surface p-3">
+            <h3 className="section-title mb-3">Patient</h3>
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label className="field-label">Name</Label>
                 <Input
                   value={patient.name}
                   onChange={(e) => setPatient((p) => ({ ...p, name: e.target.value }))}
                   placeholder="e.g. Aarav Sharma"
+                  className="h-9 text-[13px]"
                 />
               </div>
-              <div className="grid gap-1.5">
-                <Label>Mobile</Label>
+              <div className="space-y-1.5">
+                <Label className="field-label">Mobile</Label>
                 <Input
                   value={patient.mobile}
                   onChange={(e) => {
@@ -494,134 +501,147 @@ export default function POS() {
                     if (e.target.value.length === 10) matchCustomer(e.target.value);
                   }}
                   placeholder="10-digit mobile"
+                  className="h-9 font-mono text-[13px]"
                 />
               </div>
-              <div className="grid gap-1.5">
-                <Label>
-                  Doctor
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="field-label">Doctor</Label>
                   {requiresRx && (
-                    <Badge variant="destructive" className="ml-2 text-[10px]">
-                      Required (Rx in cart)
-                    </Badge>
+                    <span className="pill bg-destructive-soft text-destructive">required</span>
                   )}
-                </Label>
+                </div>
                 <Input
                   value={patient.doctor}
                   onChange={(e) => setPatient((p) => ({ ...p, doctor: e.target.value }))}
                   placeholder="Prescribing doctor"
+                  className="h-9 text-[13px]"
                 />
               </div>
-              <div className="text-xs text-muted-foreground">
+              <p className="text-[11px] text-muted-foreground">
                 {customers.length} saved customers · auto-fills on mobile match
-              </div>
-            </CardContent>
-          </Card>
+              </p>
+            </div>
+          </div>
 
-          <Card className="border-border/60 bg-card/80">
-            <CardHeader>
-              <CardTitle className="text-base">Summary</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 font-mono text-sm">
+          <div className="surface p-3">
+            <h3 className="section-title mb-3">Summary</h3>
+            <div className="space-y-1.5 font-mono text-[13px]">
               <Row label="Subtotal" value={formatINR(totals.subtotal)} />
               <Row label="Item discount" value={`- ${formatINR(totals.totalDiscount)}`} />
               <Row label="CGST" value={formatINR(totals.totalCgst)} />
               <Row label="SGST" value={formatINR(totals.totalSgst)} />
               <div className="flex items-center justify-between gap-2 py-1">
-                <Label className="text-xs">Overall Discount %</Label>
+                <Label className="text-[12px] text-muted-foreground">Overall Discount %</Label>
                 <Input
                   type="number"
                   min={0}
                   max={100}
                   value={overallDiscount}
                   onChange={(e) => setOverallDiscount(Number(e.target.value) || 0)}
-                  className="h-8 w-20 text-right"
+                  className="h-7 w-20 text-right font-mono text-[12px]"
                 />
               </div>
-              <div className="mt-2 flex items-center justify-between rounded-lg bg-gradient-primary p-3 text-primary-foreground shadow-glow">
-                <span className="text-sm font-semibold">Grand Total</span>
-                <span className="text-xl font-bold">{formatINR(totals.grand)}</span>
+              <div
+                className={cn(
+                  "mt-2 flex items-center justify-between rounded-md border border-primary/30 bg-primary-soft px-3 py-2.5",
+                )}
+              >
+                <span className="font-sans text-[12px] font-semibold uppercase tracking-wider text-primary">
+                  Grand Total
+                </span>
+                <span className="text-lg font-bold tabular-nums text-primary">
+                  {formatINR(totals.grand)}
+                </span>
               </div>
               {requiresRx && (
-                <div className="flex items-start gap-1.5 rounded-md border border-warning/40 bg-warning/5 p-2 text-[11px] text-warning">
-                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                  This bill contains H1 / Narcotic / Rx products — doctor name will be saved with the bill for compliance.
+                <div className="mt-2 flex items-start gap-1.5 rounded-md border border-warning/40 bg-warning-soft p-2 text-[11px] text-foreground">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
+                  <span>
+                    Contains H1 / Narcotic / Rx — doctor name will be saved with the bill for
+                    compliance.
+                  </span>
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-2 pt-2">
-                <Button variant="outline" disabled={busy} onClick={() => submit("Held")}>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => submit("Held")}
+                  className="h-9"
+                >
                   {busy ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
                   ) : (
-                    <PauseCircle className="mr-2 h-4 w-4" />
+                    <PauseCircle className="mr-2 h-3.5 w-3.5" />
                   )}
                   Hold
                 </Button>
-                <Button
-                  disabled={busy}
-                  onClick={() => submit("Completed")}
-                  className="bg-gradient-primary text-primary-foreground hover:opacity-90"
-                >
+                <Button disabled={busy} onClick={() => submit("Completed")} className="h-9">
                   {busy ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
                   ) : (
-                    <Receipt className="mr-2 h-4 w-4" />
+                    <Receipt className="mr-2 h-3.5 w-3.5" />
                   )}
                   Bill
                 </Button>
               </div>
               {editingBillId && (
-                <Button variant="ghost" size="sm" className="w-full" onClick={reset}>
+                <Button variant="ghost" size="sm" className="mt-2 w-full h-8" onClick={reset}>
                   Discard recalled bill
                 </Button>
               )}
-              <div className="pt-1 text-center">
-                <Badge variant="secondary" className="font-sans text-[10px]">
-                  All taxes inclusive · Rounded to nearest ₹
-                </Badge>
-              </div>
-            </CardContent>
-          </Card>
+              <p className="mt-2 text-center font-sans text-[10px] uppercase tracking-wider text-muted-foreground">
+                All taxes inclusive · Rounded to nearest ₹
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 
       <Dialog open={recallOpen} onOpenChange={setRecallOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <History className="h-4 w-4 text-primary" /> Held Bills
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <History className="h-4 w-4 text-primary" />
+              Held Bills
             </DialogTitle>
-            <DialogDescription>Recall a held bill to continue editing or complete.</DialogDescription>
+            <DialogDescription className="text-[13px]">
+              Recall a held bill to continue editing or complete.
+            </DialogDescription>
           </DialogHeader>
           {recallLoading ? (
             <div className="flex h-32 items-center justify-center text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin" />
             </div>
           ) : heldBills.length === 0 ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">No held bills.</div>
+            <div className="py-8 text-center text-[13px] text-muted-foreground">
+              No held bills.
+            </div>
           ) : (
             <div className="space-y-2">
               {heldBills.map((h) => (
                 <button
                   key={h.id}
                   onClick={() => recall(h)}
-                  className="flex w-full items-center justify-between rounded-lg border border-border/60 bg-muted/20 p-3 text-left transition-colors hover:border-primary hover:bg-muted/40"
+                  className="flex w-full items-center justify-between rounded-md border border-border bg-card p-3 text-left transition-colors hover:border-primary hover:bg-muted/30"
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">
+                    <p className="truncate text-[13px] font-semibold">
                       {h.patient_name || h.patientName || "Walk-in"}
                     </p>
-                    <p className="font-mono text-xs text-muted-foreground">
+                    <p className="font-mono text-[11px] text-muted-foreground">
                       {h.bill_number ?? h.billNumber} · {h.item_count ?? 0} items
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm font-semibold">
+                    <span className="font-mono text-[13px] font-semibold tabular-nums">
                       {formatINR(h.grand_total ?? 0)}
                     </span>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 text-destructive"
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
                       onClick={(e) => removeHeld(h, e)}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -639,7 +659,7 @@ export default function POS() {
 
 const Row = ({ label, value }: { label: string; value: string }) => (
   <div className="flex items-center justify-between">
-    <span className="font-sans text-muted-foreground">{label}</span>
-    <span>{value}</span>
+    <span className="font-sans text-[12px] text-muted-foreground">{label}</span>
+    <span className="tabular-nums">{value}</span>
   </div>
 );

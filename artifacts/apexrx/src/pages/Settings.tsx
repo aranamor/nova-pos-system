@@ -57,7 +57,7 @@ export default function Settings() {
       <PageHeader title="Settings" description="Shop info, GST, low-stock thresholds and theme." />
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="border-border/60 bg-card/80 lg:col-span-2">
+        <Card className="border-border bg-card lg:col-span-2">
           <CardHeader>
             <CardTitle>Shop Information</CardTitle>
             <CardDescription>Used on invoices and reports.</CardDescription>
@@ -80,7 +80,7 @@ export default function Settings() {
               <Button
                 onClick={save}
                 disabled={saving}
-                className="bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90"
+                className=""
               >
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 Save Settings
@@ -89,7 +89,7 @@ export default function Settings() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/60 bg-card/80">
+        <Card className="border-border bg-card">
           <CardHeader>
             <CardTitle>Appearance</CardTitle>
             <CardDescription>Switch between light and dark mode.</CardDescription>

@@ -78,7 +78,7 @@ export function CustomerFormDialog({ open, onOpenChange, initial, onSaved }: Pro
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={busy} className="bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90">
+            <Button type="submit" disabled={busy} className="">
               {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {initial?.id ? "Update" : "Add"}
             </Button>
