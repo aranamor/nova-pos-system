@@ -8,6 +8,11 @@ import { AuthProvider } from "@/lib/auth";
 import { AuthGate } from "@/components/AuthGate";
 import { AppLayout } from "@/components/AppLayout";
 import Login from "./pages/Login";
+import Signup from "./pages/Signup";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
+import AccountSecurity from "./pages/AccountSecurity";
+import AdminUsers from "./pages/AdminUsers";
 import Dashboard from "./pages/Dashboard";
 import POS from "./pages/POS";
 import Inventory from "./pages/Inventory";
@@ -30,6 +35,9 @@ const App = () => (
           <AuthProvider>
             <Routes>
               <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<Signup />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               <Route element={<AuthGate />}>
                 <Route element={<AppLayout />}>
                   <Route path="/" element={<Dashboard />} />
@@ -40,6 +48,12 @@ const App = () => (
                   <Route path="/suppliers" element={<Suppliers />} />
                   <Route path="/reports" element={<Reports />} />
                   <Route path="/settings" element={<Settings />} />
+                  <Route path="/account/security" element={<AccountSecurity />} />
+                </Route>
+              </Route>
+              <Route element={<AuthGate roles={["admin"]} />}>
+                <Route element={<AppLayout />}>
+                  <Route path="/admin/users" element={<AdminUsers />} />
                 </Route>
               </Route>
               <Route path="*" element={<NotFound />} />

@@ -1,9 +1,9 @@
-import { Moon, Sun, Search, LogOut } from "lucide-react";
+import { Moon, Sun, Search, LogOut, ShieldCheck, KeyRound, UserCog } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useTheme } from "@/lib/theme";
 import { Input } from "@/components/ui/input";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -22,9 +22,9 @@ const titles: Record<string, string> = {
 export function TopBar() {
   const { theme, toggle } = useTheme();
   const { pathname } = useLocation();
-  const { username, logout } = useAuth();
+  const { user, username, role, logout } = useAuth();
   const navigate = useNavigate();
-  const title = titles[pathname] ?? "ApexRx";
+  const title = titles[pathname] ?? "Nova POS";
 
   const onLogout = async () => {
     await logout();
@@ -32,7 +32,7 @@ export function TopBar() {
     navigate("/login", { replace: true });
   };
 
-  const initial = (username ?? "U").charAt(0).toUpperCase();
+  const initial = (user?.fullName ?? username ?? "U").charAt(0).toUpperCase();
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border/60 bg-background/80 px-4 backdrop-blur-xl md:px-6">
@@ -61,11 +61,25 @@ export function TopBar() {
               </span>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel className="font-normal">
-              <div className="text-sm font-semibold">{username ?? "User"}</div>
-              <div className="text-xs text-muted-foreground">Signed in</div>
+              <div className="text-sm font-semibold">{user?.fullName ?? username ?? "User"}</div>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <ShieldCheck className="h-3 w-3 text-emerald-500" />
+                <span className="capitalize">{role ?? "guest"}</span>
+                <span>·</span>
+                <span>Signed in</span>
+              </div>
             </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link to="/account/security"><KeyRound className="mr-2 h-4 w-4" /> Security & sessions</Link>
+            </DropdownMenuItem>
+            {role === "admin" && (
+              <DropdownMenuItem asChild>
+                <Link to="/admin/users"><UserCog className="mr-2 h-4 w-4" /> Users & access</Link>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onLogout} className="text-destructive">
               <LogOut className="mr-2 h-4 w-4" /> Sign out

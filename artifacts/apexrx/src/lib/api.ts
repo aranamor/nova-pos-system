@@ -1,7 +1,21 @@
 // Thin API client for the ApexRx Express backend.
-// Uses session cookies. On 401, redirects to /login.
+// Uses session cookies + CSRF double-submit.
 
 const BASE = (import.meta.env.VITE_API_BASE as string) || "/api";
+
+export type Role = "admin" | "manager" | "cashier";
+
+export interface AuthUser {
+  id: number;
+  username: string;
+  email: string;
+  fullName: string | null;
+  role: Role;
+  status: "active" | "disabled";
+  emailVerified: boolean;
+  mustChangePassword: boolean;
+  lastLoginAt?: string | null;
+}
 
 export class ApiError extends Error {
   status: number;
@@ -18,11 +32,31 @@ export function setUnauthorizedHandler(fn: () => void) {
   onUnauthorized = fn;
 }
 
+// CSRF token cache (set when /me responds; also kept in cookie for resilience)
+let csrfToken: string | null = null;
+export function setCsrfToken(t: string | null) {
+  csrfToken = t;
+}
+function readCsrfFromCookie(): string | null {
+  if (typeof document === "undefined") return null;
+  const m = document.cookie.match(/(?:^|;\s*)apexrx\.csrf=([^;]+)/);
+  return m ? decodeURIComponent(m[1]!) : null;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = (init?.method ?? "GET").toUpperCase();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...((init?.headers as Record<string, string>) ?? {}),
+  };
+  if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+    const tok = csrfToken ?? readCsrfFromCookie();
+    if (tok) headers["X-CSRF-Token"] = tok;
+  }
   const res = await fetch(`${BASE}${path}`, {
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
     ...init,
+    headers,
   });
   let payload: unknown = null;
   const ct = res.headers.get("content-type") ?? "";
@@ -40,7 +74,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
   }
   if (!res.ok) {
-    const isAuthEndpoint = path === "/login" || path === "/me" || path === "/logout";
+    const isAuthEndpoint =
+      path === "/login" ||
+      path === "/me" ||
+      path === "/logout" ||
+      path.startsWith("/forgot-password") ||
+      path.startsWith("/reset-password");
     if (res.status === 401 && !isAuthEndpoint && onUnauthorized) {
       onUnauthorized();
     }
@@ -57,20 +96,81 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return payload as T;
 }
 
+export interface SessionInfo {
+  id: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  lastSeenAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  current: boolean;
+}
+
+export interface AuditEntry {
+  id: number;
+  userId: number | null;
+  username: string | null;
+  event: string;
+  success: boolean;
+  ipAddress: string | null;
+  userAgent: string | null;
+  detail: string | null;
+  createdAt: string;
+}
+
 export const api = {
-  // Auth
-  me: () => request<{ loggedIn: boolean; username: string | null }>("/me"),
+  // ---- Auth ----
+  me: () =>
+    request<{ loggedIn: boolean; user?: AuthUser; csrfToken?: string }>("/me"),
   login: (username: string, password: string) =>
-    request<{ success: boolean; username?: string; message?: string }>("/login", {
+    request<{ success: boolean; user?: AuthUser; message?: string }>("/login", {
       method: "POST",
       body: JSON.stringify({ username, password }),
     }),
+  signup: (body: { username: string; email: string; fullName?: string; password: string }) =>
+    request<{ success: boolean; user?: AuthUser; message?: string }>("/signup", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   logout: () => request<{ success: boolean }>("/logout", { method: "POST" }),
+  forgotPassword: (email: string) =>
+    request<{ success: boolean; message: string; devToken?: string }>(
+      "/forgot-password",
+      { method: "POST", body: JSON.stringify({ email }) },
+    ),
+  resetPassword: (token: string, password: string) =>
+    request<{ success: boolean; message: string }>("/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ token, password }),
+    }),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<{ success: boolean; message: string }>("/change-password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
+  sessions: () => request<SessionInfo[]>("/sessions"),
+  revokeSession: (id: string) =>
+    request<{ success: boolean }>(`/sessions/${encodeURIComponent(id)}/revoke`, {
+      method: "POST",
+    }),
+  auditLog: (limit = 100) => request<AuditEntry[]>(`/audit-log?limit=${limit}`),
+  users: () => request<AuthUser[]>("/users"),
+  updateUser: (id: number, body: Partial<{ role: Role; status: "active" | "disabled"; fullName: string | null }>) =>
+    request<{ success: boolean }>(`/users/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  adminResetPassword: (id: number) =>
+    request<{ success: boolean; tempPassword: string }>(
+      `/users/${id}/reset-password`,
+      { method: "POST" },
+    ),
 
-  // Dashboard
+  // ---- Dashboard ----
   dashboardStats: () => request<any>("/dashboard-stats"),
 
-  // Products (catalog)
+  // ---- Products ----
   products: (status?: "Available" | "NotAvailable" | "All", q?: string) => {
     const qs = new URLSearchParams();
     if (status) qs.set("status", status);
@@ -103,7 +203,7 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  // Customers
+  // ---- Customers ----
   customers: () => request<any[]>("/customers"),
   customer: (id: any) => request<any>(`/customers/${id}`),
   customerHistory: (id: any) => request<any[]>(`/customers/${id}/history`),
@@ -120,7 +220,7 @@ export const api = {
   deleteCustomer: (id: any) =>
     request<{ message: string }>(`/customers/${id}`, { method: "DELETE" }),
 
-  // Suppliers
+  // ---- Suppliers ----
   suppliers: () => request<any[]>("/suppliers"),
   createSupplier: (body: any) =>
     request<{ id: number; message: string }>("/suppliers", {
@@ -135,7 +235,7 @@ export const api = {
   deleteSupplier: (id: any) =>
     request<{ message: string }>(`/suppliers/${id}`, { method: "DELETE" }),
 
-  // Settings
+  // ---- Settings ----
   settings: () => request<Record<string, string | number>>("/settings"),
   saveSettings: (body: any) =>
     request<{ message: string }>("/settings", {
@@ -143,7 +243,7 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  // Bills
+  // ---- Bills ----
   bills: () => request<any[]>("/bills"),
   heldBills: () => request<any[]>("/held-bills"),
   bill: (id: any) => request<any>(`/bills/${id}`),
@@ -160,7 +260,7 @@ export const api = {
   deleteBill: (id: any) =>
     request<{ message: string }>(`/bills/${id}`, { method: "DELETE" }),
 
-  // Purchases
+  // ---- Purchases ----
   purchases: () => request<any[]>("/purchases"),
   purchase: (id: any) => request<any>(`/purchases/${id}`),
   createPurchase: (body: any) =>
@@ -174,7 +274,7 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  // Reports
+  // ---- Reports ----
   report: (type: string, fromDate: string, toDate: string, compliance?: string) => {
     const qs = new URLSearchParams({ type, fromDate, toDate });
     if (compliance && compliance !== "none") qs.set("compliance", compliance);

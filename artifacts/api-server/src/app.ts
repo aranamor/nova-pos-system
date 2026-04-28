@@ -44,11 +44,12 @@ app.use(
     name: "apexrx.sid",
     secret: process.env["SESSION_SECRET"] ?? "apexrx-pharmacy-dev-session-secret",
     resave: false,
+    rolling: true,
     saveUninitialized: false,
     store: new MemoryStore({ checkPeriod: 24 * 60 * 60 * 1000 }),
     cookie: {
       httpOnly: true,
-      secure: false,
+      secure: process.env["NODE_ENV"] === "production",
       sameSite: "lax",
       maxAge: 1000 * 60 * 60 * 12,
     },
