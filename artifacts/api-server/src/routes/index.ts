@@ -10,7 +10,8 @@ import purchasesRouter from "./purchases";
 import reportsRouter from "./reports";
 import dashboardRouter from "./dashboard";
 import stockAdjustmentsRouter from "./stock-adjustments";
-import { requireAuth } from "../lib/auth";
+import { csrfMiddleware, requireAuth } from "../lib/auth";
+import { sessionRevocationGuard } from "../middlewares/session-revocation";
 
 const router: IRouter = Router();
 
@@ -20,6 +21,8 @@ router.use(authRouter);
 
 // Protected routes
 router.use(requireAuth);
+router.use(sessionRevocationGuard);
+router.use(csrfMiddleware);
 router.use(productsRouter);
 router.use(customersRouter);
 router.use(suppliersRouter);
