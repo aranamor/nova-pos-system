@@ -1,7 +1,7 @@
 import { FormEvent, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
-import { api, ApiError } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -163,6 +163,3 @@ export default function Login() {
     </div>
   );
 }
-
-// Re-export api for convenience to avoid unused import warnings in tree-shake
-export const _ = api;
