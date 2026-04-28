@@ -70,9 +70,21 @@ export const api = {
   // Dashboard
   dashboardStats: () => request<any>("/dashboard-stats"),
 
-  // Products
-  products: () => request<any[]>("/products"),
+  // Products (catalog)
+  products: (status?: "Available" | "NotAvailable" | "All", q?: string) => {
+    const qs = new URLSearchParams();
+    if (status) qs.set("status", status);
+    if (q) qs.set("q", q);
+    const s = qs.toString();
+    return request<any[]>(`/products${s ? `?${s}` : ""}`);
+  },
   product: (id: number | string) => request<any>(`/products/${id}`),
+  productSearch: (q: string) =>
+    request<any[]>(`/products/search?q=${encodeURIComponent(q)}`),
+  productBatches: (id: number | string) =>
+    request<any[]>(`/products/${id}/batches`),
+  inventoryFlat: (q: string) =>
+    request<any[]>(`/inventory${q ? `?q=${encodeURIComponent(q)}` : ""}`),
   createProduct: (body: any) =>
     request<{ id: number; message: string }>("/products", {
       method: "POST",
@@ -163,8 +175,9 @@ export const api = {
     }),
 
   // Reports
-  report: (type: string, fromDate: string, toDate: string) => {
-    const qs = new URLSearchParams({ type, fromDate, toDate }).toString();
-    return request<any[]>(`/reports?${qs}`);
+  report: (type: string, fromDate: string, toDate: string, compliance?: string) => {
+    const qs = new URLSearchParams({ type, fromDate, toDate });
+    if (compliance && compliance !== "none") qs.set("compliance", compliance);
+    return request<any[]>(`/reports?${qs.toString()}`);
   },
 };

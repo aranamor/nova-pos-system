@@ -4,9 +4,9 @@ import {
   billsTable,
   billItemsTable,
   customersTable,
-  productsTable,
+  productBatchesTable,
 } from "@workspace/db";
-import { eq, asc, desc, and, sql, inArray } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -14,6 +14,8 @@ interface BillItemInput {
   id?: number;
   product_id?: number;
   productId?: number;
+  batch_id?: number;
+  batchId?: number;
   product_name?: string;
   name?: string;
   hsn?: string;
@@ -52,7 +54,7 @@ function calcTotals(items: BillItemInput[], overallDiscountPercent: number) {
   return { subtotal, totalDiscount, totalCgst, totalSgst, grandTotal };
 }
 
-router.get("/bills", async (req, res) => {
+router.get("/bills", async (_req, res) => {
   try {
     const rows = await db
       .select()
@@ -61,7 +63,6 @@ router.get("/bills", async (req, res) => {
       .orderBy(desc(billsTable.id));
     res.json(rows);
   } catch (err) {
-    req.log?.error({ err }, "GET /bills failed");
     res.status(500).json({ error: "Failed to list bills" });
   }
 });
@@ -69,20 +70,12 @@ router.get("/bills", async (req, res) => {
 router.get("/held-bills", async (_req, res) => {
   try {
     const result = await db.execute(sql`
-      select b.id,
-             b.bill_number,
-             b.bill_date,
-             b.patient_name,
-             b.patient_mobile,
-             b.doctor_name,
-             b.grand_total,
-             b.status,
+      select b.id, b.bill_number, b.bill_date, b.patient_name, b.patient_mobile,
+             b.doctor_name, b.grand_total, b.status,
              coalesce(c.cnt, 0)::int as item_count
         from bills b
         left join (
-          select bill_id, count(*)::int as cnt
-            from bill_items
-           group by bill_id
+          select bill_id, count(*)::int as cnt from bill_items group by bill_id
         ) c on c.bill_id = b.id
        where b.status = 'Held'
        order by b.id desc
@@ -103,6 +96,7 @@ router.get("/bills/:id", async (req, res) => {
         id: billItemsTable.id,
         bill_id: billItemsTable.billId,
         product_id: billItemsTable.productId,
+        batch_id: billItemsTable.batchId,
         product_name: billItemsTable.productName,
         hsn: billItemsTable.hsn,
         batch: billItemsTable.batch,
@@ -118,7 +112,6 @@ router.get("/bills/:id", async (req, res) => {
       .where(eq(billItemsTable.billId, id));
     res.json({ ...bill, items });
   } catch (err) {
-    req.log?.error({ err }, "GET /bills/:id failed");
     res.status(500).json({ error: "Failed to fetch bill" });
   }
 });
@@ -190,15 +183,15 @@ router.post("/bills", async (req, res) => {
 
       const billId = billRow.id;
       const billNumber = `INV-${new Date().getFullYear()}-${String(billId).padStart(4, "0")}`;
-      await tx
-        .update(billsTable)
-        .set({ billNumber })
-        .where(eq(billsTable.id, billId));
+      await tx.update(billsTable).set({ billNumber }).where(eq(billsTable.id, billId));
 
       for (const it of items as BillItemInput[]) {
+        const productId = it.product_id ?? it.productId ?? null;
+        const batchId = it.batch_id ?? it.batchId ?? null;
         await tx.insert(billItemsTable).values({
           billId,
-          productId: (it.product_id ?? it.id) ? Number(it.product_id ?? it.id) : null,
+          productId: productId ? Number(productId) : null,
+          batchId: batchId ? Number(batchId) : null,
           productName: it.product_name ?? it.name ?? "",
           hsn: it.hsn ?? null,
           batch: it.batch ?? null,
@@ -210,14 +203,13 @@ router.post("/bills", async (req, res) => {
           cgst: String(num(it.cgst)),
           sgst: String(num(it.sgst)),
         });
-        const pid = it.product_id ?? it.id;
-        if (pid && status === "Completed") {
+        if (batchId && status === "Completed") {
           await tx
-            .update(productsTable)
+            .update(productBatchesTable)
             .set({
-              quantity: sql`GREATEST(0::numeric, ${productsTable.quantity} - ${num(it.quantity)}::numeric)`,
+              quantity: sql`GREATEST(0::numeric, ${productBatchesTable.quantity} - ${num(it.quantity)}::numeric)`,
             })
-            .where(eq(productsTable.id, Number(pid)));
+            .where(eq(productBatchesTable.id, Number(batchId)));
         }
       }
 
@@ -260,42 +252,46 @@ router.put("/bills/:id", async (req, res) => {
     const totals = calcTotals(items as BillItemInput[], overall);
 
     await db.transaction(async (tx) => {
+      // Reverse stock decrements from old (Completed) version
       const existingMap: Record<number, number> = {};
       if (wasCompleted) {
         for (const it of existingItems) {
-          if (it.productId) {
-            existingMap[it.productId] = (existingMap[it.productId] ?? 0) + Number(it.quantity);
+          if (it.batchId) {
+            existingMap[it.batchId] = (existingMap[it.batchId] ?? 0) + Number(it.quantity);
           }
         }
       }
       const newMap: Record<number, number> = {};
       if (status === "Completed") {
         for (const it of items as BillItemInput[]) {
-          const pid = Number(it.product_id ?? it.id ?? 0);
-          if (pid) newMap[pid] = (newMap[pid] ?? 0) + num(it.quantity);
+          const bid = Number(it.batch_id ?? it.batchId ?? 0);
+          if (bid) newMap[bid] = (newMap[bid] ?? 0) + num(it.quantity);
         }
       }
       const allKeys = new Set([
         ...Object.keys(existingMap).map(Number),
         ...Object.keys(newMap).map(Number),
       ]);
-      for (const pid of allKeys) {
-        const delta = (existingMap[pid] ?? 0) - (newMap[pid] ?? 0);
+      for (const bid of allKeys) {
+        const delta = (existingMap[bid] ?? 0) - (newMap[bid] ?? 0);
         if (delta !== 0) {
           await tx
-            .update(productsTable)
+            .update(productBatchesTable)
             .set({
-              quantity: sql`GREATEST(0::numeric, ${productsTable.quantity} + ${delta}::numeric)`,
+              quantity: sql`GREATEST(0::numeric, ${productBatchesTable.quantity} + ${delta}::numeric)`,
             })
-            .where(eq(productsTable.id, pid));
+            .where(eq(productBatchesTable.id, bid));
         }
       }
 
       await tx.delete(billItemsTable).where(eq(billItemsTable.billId, billId));
       for (const it of items as BillItemInput[]) {
+        const productId = it.product_id ?? it.productId ?? null;
+        const batchId = it.batch_id ?? it.batchId ?? null;
         await tx.insert(billItemsTable).values({
           billId,
-          productId: (it.product_id ?? it.id) ? Number(it.product_id ?? it.id) : null,
+          productId: productId ? Number(productId) : null,
+          batchId: batchId ? Number(batchId) : null,
           productName: it.product_name ?? it.name ?? "",
           hsn: it.hsn ?? null,
           batch: it.batch ?? null,
@@ -341,13 +337,8 @@ router.delete("/bills/:id", async (req, res) => {
       .where(and(eq(billsTable.id, id), eq(billsTable.status, "Held")));
     res.json({ message: "Held bill deleted" });
   } catch (err) {
-    req.log?.error({ err }, "DELETE /bills/:id failed");
     res.status(500).json({ error: "Failed to delete held bill" });
   }
 });
-
-// Suppress unused import warning
-void asc;
-void inArray;
 
 export default router;

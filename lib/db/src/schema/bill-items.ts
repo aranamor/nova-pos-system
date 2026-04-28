@@ -1,11 +1,15 @@
 import { pgTable, serial, varchar, integer, numeric } from "drizzle-orm/pg-core";
 import { billsTable } from "./bills";
 import { productsTable } from "./products";
+import { productBatchesTable } from "./product-batches";
 
 export const billItemsTable = pgTable("bill_items", {
   id: serial("id").primaryKey(),
   billId: integer("bill_id").notNull().references(() => billsTable.id, { onDelete: "cascade" }),
   productId: integer("product_id").references(() => productsTable.id, { onDelete: "set null" }),
+  batchId: integer("batch_id").references(() => productBatchesTable.id, {
+    onDelete: "set null",
+  }),
   productName: varchar("product_name", { length: 255 }).notNull(),
   hsn: varchar("hsn", { length: 255 }),
   batch: varchar("batch", { length: 255 }),

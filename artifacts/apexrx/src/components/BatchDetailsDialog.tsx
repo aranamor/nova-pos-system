@@ -1,32 +1,21 @@
-import { useMemo, useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, Package, CalendarClock } from "lucide-react";
+import { AlertTriangle, Package, CalendarClock, Loader2 } from "lucide-react";
 import { formatINR } from "@/lib/format";
-
-export type BatchRow = {
-  id?: number;
-  batch: string;
-  quantity: number | string;
-  mrp: number | string;
-  sale_rate_inclusive: number | string;
-  expiry: string;
-  purchase_rate?: number | string;
-};
+import { api } from "@/lib/api";
 
 type Props = {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  product: {
-    id?: number | string;
-    name?: string;
-    hsn?: string;
-    packaging?: string;
-    cgst?: number | string;
-    sgst?: number | string;
-  } | null;
-  batches: BatchRow[];
+  product: any | null;
 };
 
 const monthsAhead = (n: number) => {
@@ -35,12 +24,24 @@ const monthsAhead = (n: number) => {
   return d.toISOString().slice(0, 7);
 };
 
-export function BatchDetailsDialog({ open, onOpenChange, product, batches }: Props) {
+export function BatchDetailsDialog({ open, onOpenChange, product }: Props) {
+  const [batches, setBatches] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<"all" | "expiring" | "expired">("all");
   const todayMonth = new Date().toISOString().slice(0, 7);
   const m3 = monthsAhead(3);
 
-  const numQty = (b: BatchRow) => Number(b.quantity ?? 0);
+  useEffect(() => {
+    if (!open || !product?.id) return;
+    setLoading(true);
+    api
+      .productBatches(product.id)
+      .then((rows) => setBatches(rows))
+      .catch(() => setBatches([]))
+      .finally(() => setLoading(false));
+  }, [open, product]);
+
+  const numQty = (b: any) => Number(b.quantity ?? 0);
 
   const filtered = useMemo(() => {
     return batches.filter((b) => {
@@ -53,7 +54,9 @@ export function BatchDetailsDialog({ open, onOpenChange, product, batches }: Pro
   }, [batches, filter, todayMonth, m3]);
 
   const totalQty = batches.reduce((s, b) => s + numQty(b), 0);
-  const expiredQty = batches.filter((b) => String(b.expiry) < todayMonth).reduce((s, b) => s + numQty(b), 0);
+  const expiredQty = batches
+    .filter((b) => String(b.expiry) < todayMonth)
+    .reduce((s, b) => s + numQty(b), 0);
   const expiringQty = batches
     .filter((b) => String(b.expiry) >= todayMonth && String(b.expiry) <= m3)
     .reduce((s, b) => s + numQty(b), 0);
@@ -67,26 +70,38 @@ export function BatchDetailsDialog({ open, onOpenChange, product, batches }: Pro
             {product?.name ?? "Product"}
           </DialogTitle>
           <DialogDescription className="font-mono text-xs">
-            HSN {product?.hsn} · {product?.packaging} · GST {product?.cgst}+{product?.sgst}%
+            {product?.manufacturer ? `${product.manufacturer} · ` : ""}HSN {product?.hsn ?? "—"} ·{" "}
+            {product?.packing_size ?? product?.packingSize ?? "—"} · GST {product?.gst_rate ?? product?.gstRate}%
           </DialogDescription>
+          {(product?.is_h1 || product?.is_narcotic || product?.is_prescription_required) && (
+            <div className="flex gap-1 pt-1">
+              {product?.is_h1 && <Badge variant="destructive" className="text-[10px]">H1</Badge>}
+              {product?.is_narcotic && (
+                <Badge className="bg-amber-600 text-white text-[10px] hover:bg-amber-700">NARCOTIC</Badge>
+              )}
+              {product?.is_prescription_required && (
+                <Badge variant="secondary" className="text-[10px]">Rx</Badge>
+              )}
+            </div>
+          )}
         </DialogHeader>
 
         <div className="grid grid-cols-3 gap-3">
           <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
             <div className="text-xs text-muted-foreground">Total Stock</div>
-            <div className="font-mono text-xl font-semibold">{totalQty}</div>
+            <div className="font-mono text-xl font-semibold">{totalQty.toFixed(2)}</div>
           </div>
           <div className="rounded-lg border border-warning/40 bg-warning/5 p-3">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <CalendarClock className="h-3.5 w-3.5 text-warning" /> Expiring ≤3m
             </div>
-            <div className="font-mono text-xl font-semibold text-warning">{expiringQty}</div>
+            <div className="font-mono text-xl font-semibold text-warning">{expiringQty.toFixed(2)}</div>
           </div>
           <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <AlertTriangle className="h-3.5 w-3.5 text-destructive" /> Expired
             </div>
-            <div className="font-mono text-xl font-semibold text-destructive">{expiredQty}</div>
+            <div className="font-mono text-xl font-semibold text-destructive">{expiredQty.toFixed(2)}</div>
           </div>
         </div>
 
@@ -99,49 +114,64 @@ export function BatchDetailsDialog({ open, onOpenChange, product, batches }: Pro
         </Tabs>
 
         <div className="overflow-x-auto rounded-lg border border-border/60">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2 text-left">Batch</th>
-                <th className="px-3 py-2 text-right">Qty</th>
-                <th className="px-3 py-2 text-right">MRP</th>
-                <th className="px-3 py-2 text-right">Sale (Inc.)</th>
-                <th className="px-3 py-2 text-center">Expiry</th>
-                <th className="px-3 py-2 text-center">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((b, i) => {
-                const expired = String(b.expiry) < todayMonth;
-                const soon = !expired && String(b.expiry) <= m3;
-                return (
-                  <tr key={`${b.batch}-${i}`} className="border-t border-border/60 hover:bg-muted/20">
-                    <td className="px-3 py-2 font-mono text-xs">{b.batch}</td>
-                    <td className="px-3 py-2 text-right font-mono">{numQty(b)}</td>
-                    <td className="px-3 py-2 text-right font-mono">{formatINR(b.mrp)}</td>
-                    <td className="px-3 py-2 text-right font-mono">{formatINR(b.sale_rate_inclusive)}</td>
-                    <td className="px-3 py-2 text-center font-mono text-xs">{b.expiry}</td>
-                    <td className="px-3 py-2 text-center">
-                      {expired ? (
-                        <Badge variant="destructive">Expired</Badge>
-                      ) : soon ? (
-                        <Badge className="bg-warning text-warning-foreground hover:bg-warning">Expiring</Badge>
-                      ) : (
-                        <Badge variant="secondary">OK</Badge>
-                      )}
+          {loading ? (
+            <div className="flex h-32 items-center justify-center text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin" />
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 text-left">Batch</th>
+                  <th className="px-3 py-2 text-right">Qty</th>
+                  <th className="px-3 py-2 text-right">MRP</th>
+                  <th className="px-3 py-2 text-right">P. Rate</th>
+                  <th className="px-3 py-2 text-center">Expiry</th>
+                  <th className="px-3 py-2 text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((b, i) => {
+                  const expired = String(b.expiry) < todayMonth;
+                  const soon = !expired && String(b.expiry) <= m3;
+                  return (
+                    <tr
+                      key={`${b.batchNumber ?? b.batch_number}-${i}`}
+                      className="border-t border-border/60 hover:bg-muted/20"
+                    >
+                      <td className="px-3 py-2 font-mono text-xs">
+                        {b.batchNumber ?? b.batch_number}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono">{numQty(b).toFixed(2)}</td>
+                      <td className="px-3 py-2 text-right font-mono">{formatINR(b.mrp)}</td>
+                      <td className="px-3 py-2 text-right font-mono">
+                        {formatINR(b.purchaseRate ?? b.purchase_rate)}
+                      </td>
+                      <td className="px-3 py-2 text-center font-mono text-xs">{b.expiry}</td>
+                      <td className="px-3 py-2 text-center">
+                        {expired ? (
+                          <Badge variant="destructive">Expired</Badge>
+                        ) : soon ? (
+                          <Badge className="bg-warning text-warning-foreground hover:bg-warning">
+                            Expiring
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary">OK</Badge>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!filtered.length && (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-muted-foreground">
+                      No batches match this filter.
                     </td>
                   </tr>
-                );
-              })}
-              {!filtered.length && (
-                <tr>
-                  <td colSpan={6} className="py-8 text-center text-muted-foreground">
-                    No batches match this filter.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                )}
+              </tbody>
+            </table>
+          )}
         </div>
       </DialogContent>
     </Dialog>

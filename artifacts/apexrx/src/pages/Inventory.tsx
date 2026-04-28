@@ -6,7 +6,16 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  Plus, Search, Filter, AlertTriangle, Edit2, Trash2, MinusCircle, ChevronRight,
+  Plus,
+  Search,
+  AlertTriangle,
+  Edit2,
+  Trash2,
+  MinusCircle,
+  ChevronRight,
+  PackageX,
+  PackageCheck,
+  Package,
 } from "lucide-react";
 import { formatINR } from "@/lib/format";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,66 +24,45 @@ import { ProductFormDialog } from "@/components/ProductFormDialog";
 import { StockAdjustDialog } from "@/components/StockAdjustDialog";
 import { toast } from "sonner";
 
+type StockStatus = "Available" | "NotAvailable" | "All";
+
 export default function Inventory() {
   const [products, setProducts] = useState<any[]>([]);
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"all" | "low" | "exp1" | "exp2" | "exp3" | "expired">("all");
+  const [tab, setTab] = useState<StockStatus>("Available");
   const [selected, setSelected] = useState<any | null>(null);
   const [editing, setEditing] = useState<any | null>(null);
   const [adjusting, setAdjusting] = useState<any | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const load = () =>
-    api
-      .products()
-      .then(setProducts)
-      .catch((err) => toast.error(err?.message ?? "Failed to load products"));
-  useEffect(() => {
-    load();
-  }, []);
-
-  const monthsAhead = (n: number) => {
-    const d = new Date();
-    d.setMonth(d.getMonth() + n);
-    return d.toISOString().slice(0, 7);
-  };
-  const todayMonth = new Date().toISOString().slice(0, 7);
-
-  // Group by name to render one row per product, with expand-to-batches.
-  const grouped = useMemo(() => {
-    const map = new Map<string, any[]>();
-    for (const p of products) {
-      const arr = map.get(p.name) ?? [];
-      arr.push(p);
-      map.set(p.name, arr);
+  const load = async () => {
+    setLoading(true);
+    try {
+      const rows = await api.products(tab, search);
+      setProducts(rows);
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to load products");
+    } finally {
+      setLoading(false);
     }
-    return Array.from(map.values()).map((batches) => {
-      const totalQty = batches.reduce((s, b) => s + Number(b.quantity || 0), 0);
-      const earliestExpiry = [...batches].sort((a, b) => String(a.expiry).localeCompare(String(b.expiry)))[0]?.expiry;
-      return { ...batches[0], _batches: batches, _totalQty: totalQty, _earliestExpiry: earliestExpiry };
-    });
-  }, [products]);
+  };
 
-  const filtered = useMemo(() => {
-    return grouped.filter((p) => {
-      if (search && !`${p.name} ${p.batch} ${p.hsn}`.toLowerCase().includes(search.toLowerCase()))
-        return false;
-      if (filter === "low" && p._totalQty > 10) return false;
-      if (filter === "expired" && p._earliestExpiry > todayMonth) return false;
-      if (filter === "exp1" && (p._earliestExpiry < todayMonth || p._earliestExpiry > monthsAhead(1)))
-        return false;
-      if (filter === "exp2" && (p._earliestExpiry < todayMonth || p._earliestExpiry > monthsAhead(2)))
-        return false;
-      if (filter === "exp3" && (p._earliestExpiry < todayMonth || p._earliestExpiry > monthsAhead(3)))
-        return false;
-      return true;
-    });
-  }, [grouped, search, filter]);
+  useEffect(() => {
+    const t = setTimeout(load, 200);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, search]);
+
+  const counts = useMemo(() => {
+    const total = products.length;
+    return { total };
+  }, [products]);
 
   const remove = async (p: any, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm(`Delete ${p.name} (batch ${p.batch})?`)) return;
+    if (!confirm(`Delete ${p.name}? Existing batches & stock will also be removed.`)) return;
     try {
       await api.deleteProduct(p.id);
       toast.success("Product deleted");
@@ -105,7 +93,7 @@ export default function Inventory() {
     <div className="space-y-6">
       <PageHeader
         title="Inventory"
-        description="Track stock, batches and expiry across your store."
+        description="Catalog of products. Stock comes from purchase entries — products start with 0 stock."
         actions={
           <Button
             onClick={onAdd}
@@ -124,23 +112,30 @@ export default function Inventory() {
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by name, batch, HSN…"
+                placeholder="Search by name, manufacturer, HSN, content…"
                 className="h-10 pl-10"
               />
             </div>
-            <Tabs value={filter} onValueChange={(v) => setFilter(v as any)}>
+            <Tabs value={tab} onValueChange={(v) => setTab(v as StockStatus)}>
               <TabsList className="bg-muted/40">
-                <TabsTrigger value="all">
-                  <Filter className="mr-1.5 h-3.5 w-3.5" />
+                <TabsTrigger value="Available">
+                  <PackageCheck className="mr-1.5 h-3.5 w-3.5" />
+                  Available
+                </TabsTrigger>
+                <TabsTrigger value="NotAvailable">
+                  <PackageX className="mr-1.5 h-3.5 w-3.5" />
+                  Out of Stock
+                </TabsTrigger>
+                <TabsTrigger value="All">
+                  <Package className="mr-1.5 h-3.5 w-3.5" />
                   All
                 </TabsTrigger>
-                <TabsTrigger value="low">Low</TabsTrigger>
-                <TabsTrigger value="exp1">≤1m</TabsTrigger>
-                <TabsTrigger value="exp2">≤2m</TabsTrigger>
-                <TabsTrigger value="exp3">≤3m</TabsTrigger>
-                <TabsTrigger value="expired">Expired</TabsTrigger>
               </TabsList>
             </Tabs>
+          </div>
+
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>{loading ? "Loading…" : `${counts.total} products`}</span>
           </div>
 
           <div className="overflow-x-auto rounded-lg border border-border/60">
@@ -148,23 +143,23 @@ export default function Inventory() {
               <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
                 <tr>
                   <th className="px-4 py-3 text-left">Product</th>
-                  <th className="px-3 py-3 text-left">Batches</th>
+                  <th className="px-3 py-3 text-left">Manufacturer / Pack</th>
+                  <th className="px-3 py-3 text-left">Compliance</th>
                   <th className="px-3 py-3 text-right">Total Stock</th>
                   <th className="px-3 py-3 text-right">MRP</th>
                   <th className="px-3 py-3 text-right">Sale (Inc.)</th>
-                  <th className="px-3 py-3 text-center">Earliest Expiry</th>
                   <th className="px-3 py-3 text-center">GST</th>
                   <th className="px-3 py-3" />
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((p) => {
-                  const low = p._totalQty <= 10;
-                  const expired = p._earliestExpiry && p._earliestExpiry < todayMonth;
-                  const soon = !expired && p._earliestExpiry && p._earliestExpiry <= monthsAhead(3);
+                {products.map((p) => {
+                  const totalQty = Number(p.total_quantity ?? 0);
+                  const low = totalQty > 0 && totalQty <= 10;
+                  const out = totalQty <= 0;
                   return (
                     <tr
-                      key={p.name}
+                      key={p.id}
                       onClick={() => setSelected(p)}
                       className="cursor-pointer border-t border-border/60 hover:bg-muted/20"
                     >
@@ -174,33 +169,58 @@ export default function Inventory() {
                           <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
                         </div>
                         <div className="font-mono text-xs text-muted-foreground">
-                          HSN {p.hsn} · {p.packaging ?? ""}
+                          HSN {p.hsn ?? "—"} · {p.category ?? "—"}
                         </div>
                       </td>
-                      <td className="px-3 py-3 font-mono text-xs">{p._batches.length}</td>
+                      <td className="px-3 py-3 text-xs">
+                        <div>{p.manufacturer ?? "—"}</div>
+                        <div className="font-mono text-muted-foreground">
+                          {p.packing_size ?? "—"}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          {p.is_h1 && (
+                            <Badge variant="destructive" className="text-[10px]">H1</Badge>
+                          )}
+                          {p.is_narcotic && (
+                            <Badge className="bg-amber-600 text-white text-[10px] hover:bg-amber-700">
+                              NAR
+                            </Badge>
+                          )}
+                          {p.is_prescription_required && (
+                            <Badge variant="secondary" className="text-[10px]">Rx</Badge>
+                          )}
+                          {!p.is_h1 && !p.is_narcotic && !p.is_prescription_required && (
+                            <span className="text-xs text-muted-foreground">OTC</span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-3 py-3 text-right">
-                        <span className={low ? "font-semibold text-warning" : ""}>{p._totalQty}</span>
-                        {low && <AlertTriangle className="ml-1 inline h-3.5 w-3.5 text-warning" />}
+                        <span
+                          className={
+                            out
+                              ? "font-semibold text-muted-foreground"
+                              : low
+                                ? "font-semibold text-warning"
+                                : "font-semibold"
+                          }
+                        >
+                          {totalQty.toFixed(2)}
+                        </span>
+                        {low && !out && (
+                          <AlertTriangle className="ml-1 inline h-3.5 w-3.5 text-warning" />
+                        )}
+                        <div className="font-mono text-[10px] text-muted-foreground">
+                          {p.sale_unit}
+                        </div>
                       </td>
                       <td className="px-3 py-3 text-right font-mono">{formatINR(p.mrp)}</td>
                       <td className="px-3 py-3 text-right font-mono font-semibold">
-                        {formatINR(p.sale_rate_inclusive)}
-                      </td>
-                      <td className="px-3 py-3 text-center">
-                        {expired ? (
-                          <Badge variant="destructive">{p._earliestExpiry}</Badge>
-                        ) : soon ? (
-                          <Badge className="bg-warning text-warning-foreground hover:bg-warning">
-                            {p._earliestExpiry}
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary" className="font-mono">
-                            {p._earliestExpiry}
-                          </Badge>
-                        )}
+                        {formatINR(p.sale_rate_incl)}
                       </td>
                       <td className="px-3 py-3 text-center font-mono text-xs">
-                        {p.cgst}+{p.sgst}%
+                        {p.gst_rate}%
                       </td>
                       <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-1">
@@ -218,6 +238,7 @@ export default function Inventory() {
                             size="icon"
                             className="h-8 w-8 text-warning"
                             title="Adjust stock"
+                            disabled={out}
                             onClick={(e) => onAdjust(p, e)}
                           >
                             <MinusCircle className="h-3.5 w-3.5" />
@@ -236,10 +257,14 @@ export default function Inventory() {
                     </tr>
                   );
                 })}
-                {!filtered.length && (
+                {!loading && !products.length && (
                   <tr>
                     <td colSpan={8} className="py-10 text-center text-muted-foreground">
-                      No products match your filters.
+                      {tab === "Available"
+                        ? "No products with stock — record a Purchase to add stock."
+                        : tab === "NotAvailable"
+                          ? "Every catalog product has stock."
+                          : "No products in catalog yet."}
                     </td>
                   </tr>
                 )}
@@ -253,7 +278,6 @@ export default function Inventory() {
         open={!!selected}
         onOpenChange={(v) => !v && setSelected(null)}
         product={selected}
-        batches={selected?._batches ?? []}
       />
 
       <ProductFormDialog

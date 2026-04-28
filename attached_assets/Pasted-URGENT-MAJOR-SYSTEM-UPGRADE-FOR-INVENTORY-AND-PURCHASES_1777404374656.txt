@@ -1,0 +1,43 @@
+URGENT: MAJOR SYSTEM UPGRADE FOR INVENTORY AND PURCHASES I need to completely overhaul the Inventory and Purchases sections of the application. The current logic is too simple. This will require significant database schema updates, complex unit conversion logic, and entirely new UI flows. Please read the following constraints and implement them step-by-step.
+PART 1: ADD NEW PRODUCT SECTION When adding a new product, the schema must now include the following fields:
+•	Basic Info: Name, Manufacturer, HSN, Content (Composition), Packing Size
+•	Categories (Dropdown): A TO Z, ALZHEIMER DISEASE, ANALGESIC / ANIPIRETIC, ANALGESIC OPOID (NRx), ANALGESIC SPREY, ANTACIDS & PPI, ANTI ANXIETY (NRx DRUG), ANTI DIABETIC, ANTI HYPERTENSION (B P), ANTI PARKINSON'S DIASEASE, ANTIALLERGIC, ANTIARRHYTHMIC, ANTIBIOTICS, ANTICOAGULANT, ANTICOLD, ANTICONVULSANT, ANTIDEPRESSANT, ANTIDIURETIC, ANTIEMITTING, ANTIEPILEPTIC, ANTIFUNGAL, ANTIHISTAMINE, ANTIMUSCARINICS, ANTISEPTIC, ANTISPASMODIC, ANTITHYROID, ANTITUBERCULOSIS, ANTIVIRAL, ARTHRITIS, AYURVEDIC, BABY CARE PRODUCTS, BABY DROPS, BALM, BENZODIAZEPINE, BRONCHODIALATOR, CALCIUM & IRON, CANCER, CARDIAC, CHIPS/KURKURE/WAFERS, CHOCOLATE, CHOLESTEROL /STATINS, CHOLESTROL RANGE, COLD DRINKS, CORTICOSTERIODS, COSMETICS, COUGH, COUGH SYRUP, CREAM / GEL, DIURETICS, EYE / EAR DROP, FACE WASH, FOOD SUPPLEMENTS, FUNGAL INFECTION, GENERAL PRODUCT, HAIR GROOMING, HERBAL, HIV, INJECTIONS, LAXATIVE, LOTIONS, MULTIVITAMIN AND MULTIMINERALS, NASAL DROP, NON GENERIC MED, NRX, OINTMENTS, OTC PRODUCTS, PAIN KILLER, PERFUME, PILESCURE, SEDATIVE HYPNOTICS, SEDATIVE-HYPNOTIC, SHAMPOO, SOAPS, SURGICALS, SUSPENSIONS, SYRUP, URINARY & PROSTATE RELATED, VETERINARY, VITAMIN SUPPLEMENTS, WELLNESS, WOMEN CARE.
+•	UNITS INDENTIFIERS: Explained in next part
+•	Compliance Flags (Booleans): H1 Drug (Yes/No), Narcotic (Yes/No), Prescription Required (Yes/No).
+•	Tax Details: HSN Code, Tax Amount Dropdown (GST 5%, GST 12%, GST 18%, GST 28%, GST 3%, GST 40%, Tax Free).
+•	Pricing: MRP, Customer Sale Rate (Excluding GST), Customer Sale Rate (Including GST). Logic Note: The UI must auto-calculate the Inclusive rate from the Exclusive rate based on the selected GST %, and vice versa.
+THE UNIT CONVERSION ENGINE (CRITICAL) You must be very mindful of how Purchase and Selling unit conversions work to ensure perfect inventory management. Include these fields:
+•	Primary Purchase Unit (Dropdown): STRIP, BOTTLE, PACK, JAR, TABLET, CAPSULES, BOX, TUBE, PIECE, VIAL, INJ, SACHET, SPRAY BOTTLE, CAN, UNIT, ampule, drop, packet, pouch, INSURANCE, RESPULE, AMPOULE, GLOVES, INSULIN, AMPULE, VIAL & SMALL BOTTLE, SYRINGE, TIN, CONTAINER, SUPPOSITRIES, ML, INJECTION.
+•	Secondary Unit: Will have same variables as the primary purchase unit
+•	Purchase Conversion Multiplier
+•	Sale Unit: Will have same variables as the primary purchase unit
+•	Selling Conversion Multiplier
+Example Logic to Implement: If a user adds Pantoprazole 40: 1 Box has 10 Strips, and 1 Strip has 10 Tablets. The Primary Purchase Unit is Box. The Sale Unit is Tablet (or Strip). The system must multiply down so that when 1 Box is purchased, the inventory accurately reflects the correct number of Sale Units (e.g., 100 Tablets). For liquids (e.g., Cough Syrup): Purchase Unit is Bottle, Sale Unit is Bottle. The multiplier is simply 1.
+ANOTHER EXAMPLE: Vitamin D3 60K Tablets
+•	Packaging: 1 Box contains 10 Strips. 1 Strip contains 4 Tablets.
+•	Primary Purchase Unit: Box
+•	Secondary Unit: Strip (Purchase Conversion Multiplier = 10)
+•	Sale Unit: Tablet (Selling Conversion Multiplier = 4)
+Crucial Nuance: The system must support purchasing in EITHER the Primary Unit OR the Secondary Unit. There is no guarantee a full box will be purchased; a vendor might supply 5 loose strips. The backend must be able to calculate total sale units based on which unit was used during the purchase.
+PART 2: INVENTORY STATE LOGIC The Inventory tab must be split into three views: Available, Not Available and ALL
+•	When a product is first created via "Add Product", it has 0 stock and MUST automatically go to the "Not Available" list.
+•	The product only moves to the "Available" list AFTER a Purchase Bill is generated for it, adding stock to the database.
+•	Selecting ALL lists every product in the database.
+PART 4: NEW PURCHASE SECTION UI/UX Create a highly professional "New Purchase" entry screen with the following features:
+•	Header: Supplier Name (searchable dropdown), Invoice Number, Invoice Date, GST Type (IGST/CGST+SGST).
+•	Dynamic Item Grid: A table where rows can be added. Columns must include:
+1.	Product Search (auto-fills HSN, Packing, and GST based on Inventory DB).
+2.	Batch Number (Text).
+3.	Expiry Date (MM/YY format).
+4.	Purchasing UoM (Dropdown): User selects either the Primary Unit (e.g., Box) OR Secondary Unit (e.g., Strip) for this specific line item.
+5.	Quantity (Based on the selected Purchasing UoM).
+6.	Free Quantity (Bonus scheme items, also based on selected Purchasing UoM).
+7.	Purchase Rate / PTR (Cost per selected Purchasing UoM).
+8.	Discount %.
+9.	GST Amount (Auto-calculated from product data) for individual product.
+10.	Net Line total details: DISCOUNT%, DISCOUNT AMOUNT, Taxable amount, total gst, rounding, grand total.
+•	Action / Mathematical Logic: Submitting this purchase bill must trigger the Unit Conversion Engine to increment the database stock in "Sale Units", and shift the item to "Available". The math MUST branch based on the Purchasing UoM selected:
+o	If Primary Unit is selected (e.g., Box): (Quantity + Free Quantity) × Purchase Conversion Multiplier × Selling Conversion Multiplier = Total Sale Units added to inventory.
+o	If Secondary Unit is selected (e.g., Strip): (Quantity + Free Quantity) × Selling Conversion Multiplier = Total Sale Units added to inventory.
+PART 5: COMPLIANCE REPORTING Because the H1, Narcotic, and Prescription choices are mandatory for drug compliances, update the Reports section. Add specific report filters to generate lists of Purchases and Sales specifically for H1 Drugs, Narcotics, and Rx Drugs over a selected date range.
+

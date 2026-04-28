@@ -4,21 +4,29 @@ import {
   purchaseBillsTable,
   purchaseBillItemsTable,
   productsTable,
+  productBatchesTable,
   suppliersTable,
 } from "@workspace/db";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 
 const router: IRouter = Router();
 
 interface PurchaseItemInput {
+  productId: number;
   productName: string;
-  hsn: string;
+  hsn?: string;
   batch: string;
   packaging?: string;
-  quantity: number | string;
-  freeQuantity?: number | string;
-  mrp: number | string;
-  purchaseRate: number | string;
+
+  purchasingUom: "Primary" | "Secondary";
+  unitLabel?: string;
+  purchaseConvAtTime: number | string;
+  sellingConvAtTime: number | string;
+
+  quantity: number | string; // in chosen UoM
+  freeQuantity?: number | string; // in chosen UoM
+  mrp: number | string; // per sale unit
+  purchaseRate: number | string; // per chosen UoM
   saleRate?: number | string;
   saleRateIncl: number | string;
   discount?: number | string;
@@ -33,6 +41,19 @@ interface PurchaseItemInput {
 function num(v: unknown): number {
   const n = typeof v === "number" ? v : parseFloat(String(v ?? 0));
   return Number.isFinite(n) ? n : 0;
+}
+
+// Critical formula: convert chosen UoM quantity into total sale units.
+// Primary UoM (e.g. Box): qty × purchase_conv × selling_conv
+// Secondary UoM (e.g. Strip): qty × selling_conv
+function calcSaleUnits(item: PurchaseItemInput): number {
+  const totalChosen = num(item.quantity) + num(item.freeQuantity);
+  const purchaseConv = num(item.purchaseConvAtTime) || 1;
+  const sellingConv = num(item.sellingConvAtTime) || 1;
+  if (item.purchasingUom === "Primary") {
+    return totalChosen * purchaseConv * sellingConv;
+  }
+  return totalChosen * sellingConv;
 }
 
 function calcPurchaseTotals(items: PurchaseItemInput[], overallDiscountPercent: number) {
@@ -63,6 +84,8 @@ async function insertPurchaseItem(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
   purchaseBillId: number,
   item: PurchaseItemInput,
+  saleUnitsAdded: number,
+  batchId: number | null,
 ) {
   const baseAmount = num(item.purchaseRate) * num(item.quantity);
   const discountAmount = baseAmount * (num(item.discount) / 100);
@@ -74,12 +97,19 @@ async function insertPurchaseItem(
 
   await tx.insert(purchaseBillItemsTable).values({
     purchaseBillId,
+    productId: item.productId,
+    batchId,
     productName: item.productName,
-    hsn: item.hsn,
+    hsn: item.hsn ?? "",
     batch: item.batch,
     packaging: item.packaging ?? null,
+    purchasingUom: item.purchasingUom,
+    unitLabel: item.unitLabel ?? null,
+    purchaseConvAtTime: String(num(item.purchaseConvAtTime) || 1),
+    sellingConvAtTime: String(num(item.sellingConvAtTime) || 1),
     quantity: String(num(item.quantity)),
     freeQuantity: String(num(item.freeQuantity)),
+    saleUnitsAdded: String(saleUnitsAdded.toFixed(2)),
     mrp: String(num(item.mrp)),
     purchaseRate: String(num(item.purchaseRate)),
     saleRate: String(num(item.saleRate)),
@@ -95,41 +125,61 @@ async function insertPurchaseItem(
   });
 }
 
-async function updateInventoryFromPurchase(
+// Upsert into product_batches (productId + batchNumber unique).
+// Increments quantity by computed sale units. Returns batchId.
+async function upsertBatch(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
   item: PurchaseItemInput,
-) {
-  const totalQuantity = num(item.quantity) + num(item.freeQuantity);
-  await tx
-    .insert(productsTable)
+  saleUnitsAdded: number,
+): Promise<number> {
+  // purchaseRate per sale unit (so we can later compute profit)
+  const sellingConv = num(item.sellingConvAtTime) || 1;
+  const purchaseConv = num(item.purchaseConvAtTime) || 1;
+  const divisor =
+    item.purchasingUom === "Primary" ? purchaseConv * sellingConv : sellingConv;
+  const purchaseRatePerSaleUnit = divisor > 0 ? num(item.purchaseRate) / divisor : 0;
+
+  const [row] = await tx
+    .insert(productBatchesTable)
     .values({
-      name: item.productName,
-      hsn: item.hsn,
-      batch: item.batch,
-      packaging: item.packaging ?? null,
-      quantity: String(totalQuantity),
-      mrp: String(num(item.mrp)),
-      purchaseRate: String(num(item.purchaseRate)),
-      saleRate: String(num(item.saleRate)),
-      saleRateInclusive: String(num(item.saleRateIncl)),
+      productId: item.productId,
+      batchNumber: item.batch,
       expiry: item.expiry,
-      cgst: String(num(item.sale_cgst)),
-      sgst: String(num(item.sale_sgst)),
+      quantity: String(saleUnitsAdded),
+      purchaseRate: String(purchaseRatePerSaleUnit.toFixed(2)),
+      mrp: String(num(item.mrp)),
     })
     .onConflictDoUpdate({
-      target: [productsTable.name, productsTable.batch],
+      target: [productBatchesTable.productId, productBatchesTable.batchNumber],
       set: {
-        quantity: sql`${productsTable.quantity} + ${totalQuantity}::numeric`,
-        packaging: sql`EXCLUDED.packaging`,
-        mrp: sql`EXCLUDED.mrp`,
-        purchaseRate: sql`EXCLUDED.purchase_rate`,
-        saleRate: sql`EXCLUDED.sale_rate`,
-        saleRateInclusive: sql`EXCLUDED.sale_rate_inclusive`,
-        expiry: sql`EXCLUDED.expiry`,
-        cgst: sql`EXCLUDED.cgst`,
-        sgst: sql`EXCLUDED.sgst`,
+        quantity: sql`${productBatchesTable.quantity} + ${saleUnitsAdded}::numeric`,
+        purchaseRate: String(purchaseRatePerSaleUnit.toFixed(2)),
+        mrp: String(num(item.mrp)),
+        expiry: item.expiry,
       },
-    });
+    })
+    .returning({ id: productBatchesTable.id });
+  return row.id;
+}
+
+async function reverseBatch(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  productId: number,
+  batchNumber: string,
+  saleUnits: number,
+) {
+  if (!saleUnits) return;
+  await tx
+    .update(productBatchesTable)
+    .set({
+      quantity: sql`GREATEST(0::numeric, ${productBatchesTable.quantity} - ${saleUnits}::numeric)`,
+    })
+    .where(
+      and(
+        eq(productBatchesTable.productId, productId),
+        eq(productBatchesTable.batchNumber, batchNumber),
+      ),
+    );
 }
 
 router.get("/purchases", async (req, res) => {
@@ -184,8 +234,13 @@ router.post("/purchases", async (req, res) => {
       status = "Draft",
     } = req.body ?? {};
 
-    if (!supplierName || !billNumber || !billDate || !taxType || !items || items.length === 0) {
+    if (!supplierName || !billNumber || !billDate || !taxType || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: "Missing required fields for purchase bill." });
+    }
+    for (const it of items as PurchaseItemInput[]) {
+      if (!it.productId || !it.batch || !it.expiry) {
+        return res.status(400).json({ error: "Each line needs a product, batch and expiry." });
+      }
     }
 
     const overall = num(overallDiscountPercent);
@@ -228,18 +283,20 @@ router.post("/purchases", async (req, res) => {
         .returning({ id: purchaseBillsTable.id });
 
       for (const item of items as PurchaseItemInput[]) {
-        await insertPurchaseItem(tx, bill.id, item);
+        const saleUnits = calcSaleUnits(item);
+        let batchId: number | null = null;
         if (status === "Completed") {
-          await updateInventoryFromPurchase(tx, item);
+          batchId = await upsertBatch(tx, item, saleUnits);
         }
+        await insertPurchaseItem(tx, bill.id, item, saleUnits, batchId);
       }
       return bill.id;
     });
 
     res.json({ message: `Purchase bill saved as ${status}!`, id: result });
-  } catch (err) {
+  } catch (err: any) {
     req.log?.error({ err }, "POST /purchases failed");
-    res.status(500).json({ error: "Failed to create purchase bill." });
+    res.status(500).json({ error: err?.message || "Failed to create purchase bill." });
   }
 });
 
@@ -260,7 +317,8 @@ router.put("/purchases/:id", async (req, res) => {
       .select()
       .from(purchaseBillsTable)
       .where(eq(purchaseBillsTable.id, purchaseId));
-    if (!existing || existing.isLocked) {
+    if (!existing) return res.status(404).json({ error: "Purchase not found." });
+    if (existing.isLocked) {
       return res.status(403).json({ error: "This purchase is locked and cannot be edited." });
     }
 
@@ -268,15 +326,32 @@ router.put("/purchases/:id", async (req, res) => {
     const totals = calcPurchaseTotals(items as PurchaseItemInput[], overall);
 
     await db.transaction(async (tx) => {
+      // If previously Completed (shouldn't happen because of lock, but defensive),
+      // reverse old line stock impacts.
+      const oldItems = await tx
+        .select()
+        .from(purchaseBillItemsTable)
+        .where(eq(purchaseBillItemsTable.purchaseBillId, purchaseId));
+      if (existing.status === "Completed") {
+        for (const oi of oldItems) {
+          if (oi.productId) {
+            await reverseBatch(tx, oi.productId, oi.batch, Number(oi.saleUnitsAdded ?? 0));
+          }
+        }
+      }
       await tx
         .delete(purchaseBillItemsTable)
         .where(eq(purchaseBillItemsTable.purchaseBillId, purchaseId));
+
       for (const item of items as PurchaseItemInput[]) {
-        await insertPurchaseItem(tx, purchaseId, item);
+        const saleUnits = calcSaleUnits(item);
+        let batchId: number | null = null;
         if (status === "Completed") {
-          await updateInventoryFromPurchase(tx, item);
+          batchId = await upsertBatch(tx, item, saleUnits);
         }
+        await insertPurchaseItem(tx, purchaseId, item, saleUnits, batchId);
       }
+
       await tx
         .update(purchaseBillsTable)
         .set({
@@ -298,10 +373,12 @@ router.put("/purchases/:id", async (req, res) => {
     });
 
     res.json({ message: `Purchase bill updated and marked as ${status}!` });
-  } catch (err) {
+  } catch (err: any) {
     req.log?.error({ err }, "PUT /purchases/:id failed");
-    res.status(500).json({ error: "Failed to update purchase bill." });
+    res.status(500).json({ error: err?.message || "Failed to update purchase bill." });
   }
 });
+
+void productsTable;
 
 export default router;

@@ -6,15 +6,30 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
-  Trash2, Plus, Receipt, PauseCircle, Search, FileClock, Loader2, History,
+  Trash2,
+  Plus,
+  Receipt,
+  PauseCircle,
+  Search,
+  FileClock,
+  Loader2,
+  History,
+  AlertTriangle,
 } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { formatINR } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 
 interface CartLine {
   product_id: number;
+  batch_id: number;
   name: string;
   batch: string;
   hsn?: string;
@@ -26,13 +41,17 @@ interface CartLine {
   cgst: number;
   sgst: number;
   available: number;
+  is_h1?: boolean;
+  is_narcotic?: boolean;
+  is_prescription_required?: boolean;
 }
 
 export default function POS() {
-  const [products, setProducts] = useState<any[]>([]);
+  const [searchRows, setSearchRows] = useState<any[]>([]);
+  const [search, setSearch] = useState("");
+  const [searchLoading, setSearchLoading] = useState(false);
   const [customers, setCustomers] = useState<any[]>([]);
   const [heldBills, setHeldBills] = useState<any[]>([]);
-  const [search, setSearch] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [patient, setPatient] = useState({ name: "", mobile: "", doctor: "" });
   const [overallDiscount, setOverallDiscount] = useState(0);
@@ -41,49 +60,79 @@ export default function POS() {
   const [recallLoading, setRecallLoading] = useState(false);
   const [editingBillId, setEditingBillId] = useState<number | null>(null);
 
-  const loadProducts = () =>
-    api.products().then(setProducts).catch((err) => toast.error(err?.message ?? "Failed to load products"));
   const loadCustomers = () => api.customers().then(setCustomers).catch(() => {});
-  const loadHeld = () =>
-    api.heldBills().then(setHeldBills).catch(() => {});
+  const loadHeld = () => api.heldBills().then(setHeldBills).catch(() => {});
 
   useEffect(() => {
-    loadProducts();
     loadCustomers();
     loadHeld();
   }, []);
 
-  const filtered = useMemo(() => {
-    if (!search) return [] as any[];
-    const s = search.toLowerCase();
-    return products
-      .filter((p) => p.name.toLowerCase().includes(s) || (p.batch ?? "").toLowerCase().includes(s))
-      .slice(0, 8);
-  }, [search, products]);
+  // Debounced product+batch search
+  useEffect(() => {
+    if (!search || search.length < 2) {
+      setSearchRows([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        const rows = await api.inventoryFlat(search);
+        setSearchRows(rows.slice(0, 12));
+      } catch {
+        setSearchRows([]);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 200);
+    return () => clearTimeout(t);
+  }, [search]);
 
-  const addToCart = (p: any) => {
+  const addToCart = (row: any) => {
+    const batchId = Number(row.batch_id);
+    if (!batchId) {
+      toast.error("This product has no stock batch — record a purchase first.");
+      return;
+    }
+    const available = Number(row.quantity ?? 0);
+    if (available <= 0) {
+      toast.error("Selected batch has no stock.");
+      return;
+    }
+    const gst = Number(row.gst_rate ?? 0);
     setCart((c) => {
-      const existing = c.find((x) => x.product_id === p.id);
-      if (existing) return c.map((x) => (x.product_id === p.id ? { ...x, quantity: x.quantity + 1 } : x));
+      const existing = c.find((x) => x.batch_id === batchId);
+      if (existing) {
+        return c.map((x) =>
+          x.batch_id === batchId
+            ? { ...x, quantity: Math.min(x.quantity + 1, available) }
+            : x,
+        );
+      }
       return [
         ...c,
         {
-          product_id: p.id,
-          name: p.name,
-          batch: p.batch,
-          hsn: p.hsn,
-          expiry: p.expiry,
-          mrp: Number(p.mrp ?? 0),
-          rate: Number(p.sale_rate_inclusive ?? p.mrp ?? 0),
+          product_id: Number(row.product_id ?? row.id),
+          batch_id: batchId,
+          name: row.name,
+          batch: row.batch_number ?? "",
+          hsn: row.hsn,
+          expiry: row.expiry,
+          mrp: Number(row.mrp ?? 0),
+          rate: Number(row.sale_rate_incl ?? row.mrp ?? 0),
           quantity: 1,
           discount: 0,
-          cgst: Number(p.cgst ?? 0),
-          sgst: Number(p.sgst ?? 0),
-          available: Number(p.quantity ?? 0),
+          cgst: gst / 2,
+          sgst: gst / 2,
+          available,
+          is_h1: !!row.is_h1,
+          is_narcotic: !!row.is_narcotic,
+          is_prescription_required: !!row.is_prescription_required,
         },
       ];
     });
     setSearch("");
+    setSearchRows([]);
   };
 
   const updateLine = (i: number, patch: Partial<CartLine>) =>
@@ -117,9 +166,20 @@ export default function POS() {
     setEditingBillId(null);
   };
 
+  const requiresRx = useMemo(
+    () =>
+      cart.some(
+        (l) => l.is_h1 || l.is_narcotic || l.is_prescription_required,
+      ),
+    [cart],
+  );
+
   const submit = async (status: "Completed" | "Held") => {
     if (!cart.length) return toast.error("Cart is empty");
     if (status === "Completed" && !patient.name) return toast.error("Patient name is required");
+    if (status === "Completed" && requiresRx && !patient.doctor.trim()) {
+      return toast.error("Prescription drug in cart — Doctor name required");
+    }
     setBusy(true);
     try {
       const payload = {
@@ -130,6 +190,7 @@ export default function POS() {
         status,
         items: cart.map((l) => ({
           product_id: l.product_id,
+          batch_id: l.batch_id,
           name: l.name,
           hsn: l.hsn,
           batch: l.batch,
@@ -148,11 +209,12 @@ export default function POS() {
       } else {
         const r = await api.createBill(payload);
         toast.success(
-          status === "Held" ? "Bill held for later" : `Bill ${r.bill_number} created • ${formatINR(totals.grand)}`,
+          status === "Held"
+            ? "Bill held for later"
+            : `Bill ${r.bill_number} created • ${formatINR(totals.grand)}`,
         );
       }
       reset();
-      loadProducts();
       loadHeld();
       loadCustomers();
     } catch (err: any) {
@@ -185,9 +247,12 @@ export default function POS() {
         mobile: full.patientMobile ?? full.patient_mobile ?? "",
         doctor: full.doctorName ?? full.doctor_name ?? "",
       });
-      setOverallDiscount(Number(full.overallDiscountPercent ?? full.overall_discount_percent ?? 0));
+      setOverallDiscount(
+        Number(full.overallDiscountPercent ?? full.overall_discount_percent ?? 0),
+      );
       const items: CartLine[] = (full.items ?? []).map((it: any) => ({
         product_id: Number(it.product_id ?? it.productId ?? 0),
+        batch_id: Number(it.batch_id ?? it.batchId ?? 0),
         name: it.product_name ?? it.productName ?? "",
         batch: it.batch ?? "",
         hsn: it.hsn,
@@ -246,32 +311,56 @@ export default function POS() {
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="Search product by name or batch…"
+                  placeholder="Search product or batch (min 2 chars)…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="h-11 pl-10"
                 />
+                {searchLoading && (
+                  <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+                )}
               </div>
-              {!!filtered.length && (
+              {!!searchRows.length && (
                 <div className="mt-3 grid gap-2 md:grid-cols-2">
-                  {filtered.map((p) => (
+                  {searchRows.map((row) => (
                     <button
-                      key={p.id}
-                      onClick={() => addToCart(p)}
+                      key={row.batch_id}
+                      onClick={() => addToCart(row)}
                       className="group flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 p-3 text-left transition-all hover:border-primary hover:shadow-glow"
                     >
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold">{p.name}</p>
+                        <p className="truncate text-sm font-semibold">
+                          {row.name}
+                          {row.is_h1 && (
+                            <Badge variant="destructive" className="ml-1.5 text-[9px]">H1</Badge>
+                          )}
+                          {row.is_narcotic && (
+                            <Badge className="ml-1 bg-amber-600 text-white text-[9px] hover:bg-amber-700">
+                              NAR
+                            </Badge>
+                          )}
+                          {row.is_prescription_required && (
+                            <Badge variant="secondary" className="ml-1 text-[9px]">Rx</Badge>
+                          )}
+                        </p>
                         <p className="font-mono text-xs text-muted-foreground">
-                          {p.batch} · Stock: {p.quantity} · Exp: {p.expiry}
+                          {row.batch_number} · Stock: {Number(row.quantity).toFixed(2)}{" "}
+                          {row.sale_unit} · Exp: {row.expiry}
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="font-mono text-sm font-semibold">{formatINR(p.sale_rate_inclusive)}</p>
+                        <p className="font-mono text-sm font-semibold">
+                          {formatINR(row.sale_rate_incl)}
+                        </p>
                         <Plus className="ml-auto h-4 w-4 text-primary opacity-0 transition group-hover:opacity-100" />
                       </div>
                     </button>
                   ))}
+                </div>
+              )}
+              {search.length >= 2 && !searchLoading && !searchRows.length && (
+                <div className="mt-3 rounded-lg border border-border/60 bg-muted/20 p-4 text-center text-xs text-muted-foreground">
+                  No in-stock batches match.
                 </div>
               )}
             </CardContent>
@@ -280,7 +369,12 @@ export default function POS() {
           <Card className="border-border/60 bg-card/80">
             <CardHeader>
               <CardTitle className="text-base">
-                Cart ({cart.length}){editingBillId ? <Badge className="ml-2" variant="secondary">Editing held bill</Badge> : null}
+                Cart ({cart.length})
+                {editingBillId ? (
+                  <Badge className="ml-2" variant="secondary">
+                    Editing held bill
+                  </Badge>
+                ) : null}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -307,18 +401,37 @@ export default function POS() {
                     {cart.map((l, i) => (
                       <tr key={i} className="border-b border-border/40 hover:bg-muted/20">
                         <td className="px-4 py-2.5">
-                          <div className="font-medium">{l.name}</div>
+                          <div className="font-medium">
+                            {l.name}
+                            {l.is_h1 && (
+                              <Badge variant="destructive" className="ml-1.5 text-[9px]">H1</Badge>
+                            )}
+                            {l.is_narcotic && (
+                              <Badge className="ml-1 bg-amber-600 text-white text-[9px] hover:bg-amber-700">
+                                NAR
+                              </Badge>
+                            )}
+                            {l.is_prescription_required && (
+                              <Badge variant="secondary" className="ml-1 text-[9px]">Rx</Badge>
+                            )}
+                          </div>
                           <div className="font-mono text-xs text-muted-foreground">
-                            {l.batch} {l.expiry ? `· Exp ${l.expiry}` : ""}
+                            {l.batch} {l.expiry ? `· Exp ${l.expiry}` : ""} · Stock {l.available}
                           </div>
                         </td>
                         <td className="px-2 py-2 text-right">
                           <Input
                             type="number"
                             min={1}
+                            max={l.available}
                             value={l.quantity}
                             onChange={(e) =>
-                              updateLine(i, { quantity: Math.max(1, Number(e.target.value) || 1) })
+                              updateLine(i, {
+                                quantity: Math.max(
+                                  1,
+                                  Math.min(Number(e.target.value) || 1, l.available),
+                                ),
+                              })
                             }
                             className="ml-auto h-8 w-16 text-right"
                           />
@@ -330,7 +443,9 @@ export default function POS() {
                             min={0}
                             max={100}
                             value={l.discount}
-                            onChange={(e) => updateLine(i, { discount: Number(e.target.value) || 0 })}
+                            onChange={(e) =>
+                              updateLine(i, { discount: Number(e.target.value) || 0 })
+                            }
                             className="ml-auto h-8 w-16 text-right"
                           />
                         </td>
@@ -382,7 +497,14 @@ export default function POS() {
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label>Doctor</Label>
+                <Label>
+                  Doctor
+                  {requiresRx && (
+                    <Badge variant="destructive" className="ml-2 text-[10px]">
+                      Required (Rx in cart)
+                    </Badge>
+                  )}
+                </Label>
                 <Input
                   value={patient.doctor}
                   onChange={(e) => setPatient((p) => ({ ...p, doctor: e.target.value }))}
@@ -419,9 +541,19 @@ export default function POS() {
                 <span className="text-sm font-semibold">Grand Total</span>
                 <span className="text-xl font-bold">{formatINR(totals.grand)}</span>
               </div>
+              {requiresRx && (
+                <div className="flex items-start gap-1.5 rounded-md border border-warning/40 bg-warning/5 p-2 text-[11px] text-warning">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                  This bill contains H1 / Narcotic / Rx products — doctor name will be saved with the bill for compliance.
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-2 pt-2">
                 <Button variant="outline" disabled={busy} onClick={() => submit("Held")}>
-                  {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PauseCircle className="mr-2 h-4 w-4" />}
+                  {busy ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <PauseCircle className="mr-2 h-4 w-4" />
+                  )}
                   Hold
                 </Button>
                 <Button
@@ -429,7 +561,11 @@ export default function POS() {
                   onClick={() => submit("Completed")}
                   className="bg-gradient-primary text-primary-foreground hover:opacity-90"
                 >
-                  {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Receipt className="mr-2 h-4 w-4" />}
+                  {busy ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Receipt className="mr-2 h-4 w-4" />
+                  )}
                   Bill
                 </Button>
               </div>
@@ -479,7 +615,9 @@ export default function POS() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm font-semibold">{formatINR(h.grand_total ?? 0)}</span>
+                    <span className="font-mono text-sm font-semibold">
+                      {formatINR(h.grand_total ?? 0)}
+                    </span>
                     <Button
                       variant="ghost"
                       size="icon"

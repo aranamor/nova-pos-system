@@ -1,6 +1,7 @@
 export * from "./settings";
 export * from "./suppliers";
 export * from "./products";
+export * from "./product-batches";
 export * from "./customers";
 export * from "./bills";
 export * from "./bill-items";

@@ -1,17 +1,24 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 
 const router: IRouter = Router();
+
+// Compliance filter for bill_items / purchase_bill_items joined to products.
+function complianceJoinFilter(prefix: string, compliance: string): SQL | undefined {
+  if (compliance === "h1") return sql.raw(`and ${prefix}.is_h1 = true`);
+  if (compliance === "narcotic") return sql.raw(`and ${prefix}.is_narcotic = true`);
+  if (compliance === "rx") return sql.raw(`and ${prefix}.is_prescription_required = true`);
+  return undefined;
+}
 
 router.get("/reports", async (req, res) => {
   const type = String(req.query.type ?? "");
   const fromDate = String(req.query.fromDate ?? req.query.from ?? "");
   const toDate = String(req.query.toDate ?? req.query.to ?? "");
+  const compliance = String(req.query.compliance ?? "").toLowerCase();
 
-  if (!type) {
-    return res.status(400).json({ error: "Report type is required." });
-  }
+  if (!type) return res.status(400).json({ error: "Report type is required." });
   if (!fromDate || !toDate) {
     if (type !== "inventory" && type !== "expiry") {
       return res.status(400).json({ error: "Date range is required for this report." });
@@ -20,18 +27,37 @@ router.get("/reports", async (req, res) => {
 
   try {
     let result: unknown;
+    const compFilterP = complianceJoinFilter("p", compliance) ?? sql``;
+
     switch (type) {
-      case "sales":
-        result = (
-          await db.execute(sql`
-            select bill_number, to_char(bill_date, 'YYYY-MM-DD') as date,
-              patient_name, grand_total
-            from bills where status = 'Completed'
-              and date(bill_date) between ${fromDate} and ${toDate}
-            order by bill_date desc
-          `)
-        ).rows;
+      case "sales": {
+        if (compliance && ["h1", "narcotic", "rx"].includes(compliance)) {
+          result = (
+            await db.execute(sql`
+              select distinct b.bill_number, to_char(b.bill_date, 'YYYY-MM-DD') as date,
+                b.patient_name, b.grand_total
+              from bills b
+              join bill_items bi on bi.bill_id = b.id
+              join products p on p.id = bi.product_id
+              where b.status = 'Completed'
+                and date(b.bill_date) between ${fromDate} and ${toDate}
+                ${compFilterP}
+              order by date desc
+            `)
+          ).rows;
+        } else {
+          result = (
+            await db.execute(sql`
+              select bill_number, to_char(bill_date, 'YYYY-MM-DD') as date,
+                patient_name, grand_total
+              from bills where status = 'Completed'
+                and date(bill_date) between ${fromDate} and ${toDate}
+              order by bill_date desc
+            `)
+          ).rows;
+        }
         break;
+      }
       case "sale_gst":
         result = (
           await db.execute(sql`
@@ -65,23 +91,48 @@ router.get("/reports", async (req, res) => {
       case "inventory":
         result = (
           await db.execute(sql`
-            select name, packaging, hsn, batch, quantity, mrp, purchase_rate,
-              sale_rate_inclusive, expiry
-            from products order by name
+            select p.name, p.manufacturer, p.category, p.packing_size,
+              p.hsn, p.gst_rate, p.sale_unit,
+              p.is_h1, p.is_narcotic, p.is_prescription_required,
+              coalesce(sum(b.quantity), 0)::float as total_quantity,
+              count(b.id) as batch_count
+            from products p
+            left join product_batches b on b.product_id = p.id
+            ${compliance && ["h1","narcotic","rx"].includes(compliance) ? compFilterP : sql``}
+            group by p.id
+            order by p.name
           `)
         ).rows;
         break;
-      case "purchases":
-        result = (
-          await db.execute(sql`
-            select bill_number, supplier_name, to_char(bill_date, 'YYYY-MM-DD') as date,
-              tax_type, grand_total
-            from purchase_bills where status = 'Completed'
-              and bill_date between ${fromDate}::date and ${toDate}::date
-            order by bill_date desc
-          `)
-        ).rows;
+      case "purchases": {
+        if (compliance && ["h1", "narcotic", "rx"].includes(compliance)) {
+          result = (
+            await db.execute(sql`
+              select distinct pb.bill_number, pb.supplier_name,
+                to_char(pb.bill_date, 'YYYY-MM-DD') as date,
+                pb.tax_type, pb.grand_total
+              from purchase_bills pb
+              join purchase_bill_items pbi on pbi.purchase_bill_id = pb.id
+              join products p on p.id = pbi.product_id
+              where pb.status = 'Completed'
+                and pb.bill_date between ${fromDate}::date and ${toDate}::date
+                ${compFilterP}
+              order by date desc
+            `)
+          ).rows;
+        } else {
+          result = (
+            await db.execute(sql`
+              select bill_number, supplier_name, to_char(bill_date, 'YYYY-MM-DD') as date,
+                tax_type, grand_total
+              from purchase_bills where status = 'Completed'
+                and bill_date between ${fromDate}::date and ${toDate}::date
+              order by bill_date desc
+            `)
+          ).rows;
+        }
         break;
+      }
       case "supplier_purchases":
         result = (
           await db.execute(sql`
@@ -98,26 +149,29 @@ router.get("/reports", async (req, res) => {
       case "expiry":
         result = (
           await db.execute(sql`
-            select name, batch, quantity, expiry from products
-            where expiry is not null
-              and to_date(expiry || '-01', 'YYYY-MM-DD') < current_date
-            order by expiry
+            select p.name, b.batch_number as batch, b.quantity, b.expiry
+            from product_batches b
+            join products p on p.id = b.product_id
+            where b.expiry is not null
+              and to_date(b.expiry || '-01', 'YYYY-MM-DD') < current_date
+            order by b.expiry
           `)
         ).rows;
         break;
       case "profitability":
         result = (
           await db.execute(sql`
-            select bi.product_name, bi.batch, p.purchase_rate,
+            select bi.product_name, bi.batch,
+              avg(pb.purchase_rate) as purchase_rate,
               sum(bi.quantity) as total_quantity_sold,
               avg(bi.rate) as avg_sale_rate,
-              sum(bi.quantity * (bi.rate - p.purchase_rate)) as estimated_gross_profit
+              sum(bi.quantity * (bi.rate - coalesce(pb.purchase_rate, 0))) as estimated_gross_profit
             from bill_items bi
             join bills b on bi.bill_id = b.id
-            left join products p on bi.product_id = p.id
+            left join product_batches pb on pb.id = bi.batch_id
             where b.status = 'Completed'
               and date(b.bill_date) between ${fromDate} and ${toDate}
-            group by bi.product_name, bi.batch, p.purchase_rate
+            group by bi.product_name, bi.batch
             order by estimated_gross_profit desc nulls last
           `)
         ).rows;
@@ -153,6 +207,47 @@ router.get("/reports", async (req, res) => {
               and date(b.bill_date) between ${fromDate} and ${toDate}
             group by bi.hsn, bi.cgst, bi.sgst
             order by bi.hsn
+          `)
+        ).rows;
+        break;
+      case "compliance_sales":
+        result = (
+          await db.execute(sql`
+            select b.bill_number, to_char(b.bill_date, 'YYYY-MM-DD') as date,
+              b.patient_name, bi.product_name, bi.batch,
+              bi.quantity, bi.rate, (bi.rate * bi.quantity) as line_total,
+              case when p.is_h1 then 'H1' else null end as h1,
+              case when p.is_narcotic then 'NARCOTIC' else null end as narcotic,
+              case when p.is_prescription_required then 'Rx' else null end as rx
+            from bill_items bi
+            join bills b on bi.bill_id = b.id
+            join products p on p.id = bi.product_id
+            where b.status = 'Completed'
+              and date(b.bill_date) between ${fromDate} and ${toDate}
+              and (p.is_h1 = true or p.is_narcotic = true or p.is_prescription_required = true)
+              ${compliance && ["h1","narcotic","rx"].includes(compliance) ? compFilterP : sql``}
+            order by b.bill_date desc
+          `)
+        ).rows;
+        break;
+      case "compliance_purchases":
+        result = (
+          await db.execute(sql`
+            select pb.bill_number, pb.supplier_name,
+              to_char(pb.bill_date, 'YYYY-MM-DD') as date,
+              pbi.product_name, pbi.batch, pbi.quantity, pbi.purchase_rate,
+              pbi.amount,
+              case when p.is_h1 then 'H1' else null end as h1,
+              case when p.is_narcotic then 'NARCOTIC' else null end as narcotic,
+              case when p.is_prescription_required then 'Rx' else null end as rx
+            from purchase_bill_items pbi
+            join purchase_bills pb on pbi.purchase_bill_id = pb.id
+            join products p on p.id = pbi.product_id
+            where pb.status = 'Completed'
+              and pb.bill_date between ${fromDate}::date and ${toDate}::date
+              and (p.is_h1 = true or p.is_narcotic = true or p.is_prescription_required = true)
+              ${compliance && ["h1","narcotic","rx"].includes(compliance) ? compFilterP : sql``}
+            order by pb.bill_date desc
           `)
         ).rows;
         break;

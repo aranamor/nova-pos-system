@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, billsTable, productsTable, settingsTable } from "@workspace/db";
+import { db, billsTable, productsTable, productBatchesTable, settingsTable } from "@workspace/db";
 import { sql, eq, desc } from "drizzle-orm";
 
 const router: IRouter = Router();
@@ -24,17 +24,23 @@ router.get("/dashboard-stats", async (req, res) => {
       .where(eq(settingsTable.settingKey, "lowStockThreshold"));
     const lowStockThreshold = thresholdRow ? Number(thresholdRow.settingValue) : 10;
 
-    const [lowStock] = await db
-      .select({ count: sql<number>`count(${productsTable.id})::int` })
-      .from(productsTable)
-      .where(sql`${productsTable.quantity} <= ${lowStockThreshold}`);
+    // Low stock = catalog items whose summed batch quantity is <= threshold
+    const lowStockResult = await db.execute(sql`
+      select count(*)::int as cnt from (
+        select p.id from products p
+        left join product_batches b on b.product_id = p.id
+        group by p.id
+        having coalesce(sum(b.quantity), 0) <= ${lowStockThreshold}
+      ) x
+    `);
+    const lowStockCount = Number((lowStockResult.rows[0] as any)?.cnt ?? 0);
 
     const [expiring] = await db
-      .select({ count: sql<number>`count(${productsTable.id})::int` })
-      .from(productsTable)
+      .select({ count: sql<number>`count(${productBatchesTable.id})::int` })
+      .from(productBatchesTable)
       .where(
-        sql`${productsTable.expiry} is not null
-            and to_date(${productsTable.expiry} || '-01', 'YYYY-MM-DD')
+        sql`${productBatchesTable.expiry} is not null
+            and to_date(${productBatchesTable.expiry} || '-01', 'YYYY-MM-DD')
               between current_date and (current_date + interval '1 month')`,
       );
 
@@ -74,8 +80,8 @@ router.get("/dashboard-stats", async (req, res) => {
       todayBillCount: salesToday?.billCount ?? 0,
       totalItems: inventory?.totalItems ?? 0,
       totalProducts: inventory?.totalItems ?? 0,
-      lowStockCount: lowStock?.count ?? 0,
-      lowStock: lowStock?.count ?? 0,
+      lowStockCount,
+      lowStock: lowStockCount,
       expiringCount: expiring?.count ?? 0,
       expiringSoon: expiring?.count ?? 0,
       monthSales: Number(monthRow?.total ?? 0),

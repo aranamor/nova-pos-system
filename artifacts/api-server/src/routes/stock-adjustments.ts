@@ -1,30 +1,31 @@
 import { Router, type IRouter } from "express";
-import { db, stockAdjustmentsTable, productsTable } from "@workspace/db";
+import { db, stockAdjustmentsTable, productBatchesTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 
 const router: IRouter = Router();
 
 router.post("/stock-adjustments", async (req, res) => {
   try {
-    const { productId, quantity, reason, notes } = req.body ?? {};
+    const { batchId, productId, quantity, reason, notes } = req.body ?? {};
     const adjustedQty = -Math.abs(parseFloat(String(quantity)));
-    if (!productId || isNaN(adjustedQty) || adjustedQty === 0) {
-      return res.status(400).json({ error: "Invalid product or quantity for adjustment." });
+    if (!batchId || isNaN(adjustedQty) || adjustedQty === 0) {
+      return res.status(400).json({ error: "Invalid batch or quantity for adjustment." });
     }
 
     await db.transaction(async (tx) => {
       await tx.insert(stockAdjustmentsTable).values({
-        productId: Number(productId),
+        productId: productId ? Number(productId) : null,
+        batchId: Number(batchId),
         quantityAdjusted: String(adjustedQty),
         reason: reason ?? "Manual Adjustment",
         notes: notes ?? null,
       });
       await tx
-        .update(productsTable)
+        .update(productBatchesTable)
         .set({
-          quantity: sql`GREATEST(0::numeric, ${productsTable.quantity} + ${adjustedQty}::numeric)`,
+          quantity: sql`GREATEST(0::numeric, ${productBatchesTable.quantity} + ${adjustedQty}::numeric)`,
         })
-        .where(eq(productsTable.id, Number(productId)));
+        .where(eq(productBatchesTable.id, Number(batchId)));
     });
 
     res.json({ message: "Stock adjusted successfully." });
